@@ -1,0 +1,22 @@
+====================================================
+  🏁 HILL CLIMB RACING - PC INSTRUCTIONS 🏁
+====================================================
+
+TO PLAY ON WINDOWS PC:
+1. Extract / Unzip this folder anywhere on your PC (e.g. Desktop).
+2. Double-click "Start Game.bat" (or just open "index.html" in Chrome / Edge / Brave / Firefox).
+3. The game will launch directly in your browser!
+
+PC CONTROLS:
+• D or RIGHT ARROW  : Gas / Accelerate / Tilt Back (Air Backflips)
+• A or LEFT ARROW   : Brake / Reverse / Tilt Forward (Air Frontflips)
+• SPACE or ENTER    : Start Game / Restart
+• ESC or P          : Pause / Resume
+• M                 : Mute / Unmute Audio
+
+INSTALL AS DESKTOP APP (OPTIONAL):
+When open in Google Chrome or Microsoft Edge, click the 
+"Install App" icon (computer monitor with arrow) on the 
+right side of the address bar to install it as a standalone 
+desktop app on your PC!
+====================================================

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hill Climb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#ff4757">
+  <title>Hill Climb Racing</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Top In-Game HUD -->
+    <div id="hud">
+      <div class="hud-top">
+        <div class="hud-card distance-card">
+          <span class="hud-label">DISTANCE</span>
+          <span class="hud-value" id="distanceVal">0 <small>m</small></span>
+          <span class="hud-sub" id="recordVal">Record: 0 m</span>
+        </div>
+
+        <div class="hud-card coins-card">
+          <span class="hud-label">COINS</span>
+          <span class="hud-value coin-text" id="coinsVal">🪙 0</span>
+        </div>
+
+        <div class="hud-card diamonds-card">
+          <span class="hud-label">DIAMONDS</span>
+          <span class="hud-value diamond-text" id="diamondsVal">💎 0</span>
+        </div>
+
+        <div class="hud-card stage-card">
+          <span class="hud-label">STAGE</span>
+          <span class="hud-value" id="stageName">Countryside</span>
+        </div>
+
+        <div class="hud-buttons">
+          <button id="audioBtn" class="icon-btn" title="Toggle Sound (M)">🔊</button>
+          <button id="pauseBtn" class="icon-btn" title="Pause Game (Esc/P)">⏸️</button>
+        </div>
+      </div>
+
+      <!-- Gauges & Fuel Bar -->
+      <div class="hud-gauges">
+        <div class="fuel-container">
+          <div class="fuel-header">
+            <span>FUEL</span>
+            <span id="fuelWarning" class="fuel-warn hidden">LOW FUEL!</span>
+          </div>
+          <div class="fuel-bar-bg">
+            <div id="fuelBar" class="fuel-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Mini Speedometer & RPM Gauges -->
+        <div class="gauge-cluster">
+          <div class="mini-gauge">
+            <div class="gauge-dial">
+              <div class="gauge-needle" id="rpmNeedle"></div>
+              <div class="gauge-center"></div>
+            </div>
+            <span class="gauge-name">RPM</span>
+          </div>
+          <div class="mini-gauge">
+            <div class="gauge-dial">
+              <div class="gauge-needle" id="speedNeedle"></div>
+              <div class="gauge-center"></div>
+            </div>
+            <span class="gauge-name">SPEED</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stunt Notifications Popups -->
+      <div id="stuntBanner" class="stunt-banner hidden">
+        <div id="stuntTitle" class="stunt-title">BACKFLIP!</div>
+        <div id="stuntReward" class="stunt-reward">+1000 COINS</div>
+      </div>
+    </div>
+
+    <!-- Mobile & Desktop Realistic Gas & Brake Pedals -->
+    <div id="pedalControls" class="pedals-overlay">
+      <!-- Brake Pedal (Left Thumb) -->
+      <div id="brakePedal" class="pedal-wrapper brake-pedal" role="button" aria-label="Brake and Reverse Pedal">
+        <div class="pedal-arm"></div>
+        <div class="pedal-face brake-face">
+          <div class="pedal-ridges">
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+          </div>
+          <div class="pedal-name">BRAKE</div>
+          <div class="pedal-action">REVERSE • FLIP ◀</div>
+          <div class="pedal-key-badge"><kbd>A</kbd> / <kbd>◀</kbd></div>
+        </div>
+      </div>
+
+      <!-- Gas Pedal (Right Thumb) -->
+      <div id="gasPedal" class="pedal-wrapper gas-pedal" role="button" aria-label="Gas and Accelerate Pedal">
+        <div class="pedal-arm"></div>
+        <div class="pedal-face gas-face">
+          <div class="pedal-ridges">
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+            <span class="ridge"></span>
+          </div>
+          <div class="pedal-name">GAS</div>
+          <div class="pedal-action">ACCEL • FLIP ▶</div>
+          <div class="pedal-key-badge"><kbd>D</kbd> / <kbd>▶</kbd></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Home / Main Menu Screen (Requirement 3) -->
+    <div id="homeMenu" class="overlay-modal">
+      <div class="modal-card home-card">
+        <div class="home-logo-box">
+          <h1 class="home-title">HILL CLIMB</h1>
+          <div class="home-subtitle">RACING</div>
+        </div>
+
+        <div class="home-wallet-row">
+          <div class="wallet-badge">🪙 <span id="homeCoins">0</span></div>
+          <div class="wallet-badge diamond-badge">💎 <span id="homeDiamonds">0</span></div>
+        </div>
+
+        <div class="home-showcase">
+          <canvas id="homePreviewCanvas" width="320" height="150"></canvas>
+          <div class="home-v-label">CURRENT VEHICLE: <strong id="homeVehicleName">Hill Climber</strong></div>
+        </div>
+
+        <div class="menu-actions home-actions">
+          <button id="startPlayBtn" class="btn primary-btn large-btn pulse-glow">START GAME (<kbd>Space</kbd>)</button>
+          <div class="home-sub-buttons">
+            <button id="homeGarageBtn" class="btn warning-btn">The Garage & Upgrades</button>
+            <button id="homeMobileBtn" class="btn mobile-btn">📱 Play on Mobile (QR)</button>
+          </div>
+        </div>
+
+        <div class="home-footer-info">
+          <span><kbd>▶</kbd> or <kbd>D</kbd> GAS / AIR BACKFLIP</span>
+          <span>•</span>
+          <span><kbd>◀</kbd> or <kbd>A</kbd> BRAKE / AIR FRONTFLIP</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Play & Share QR Modal -->
+    <div id="mobileModal" class="overlay-modal hidden">
+      <div class="modal-card mobile-card">
+        <div class="mobile-modal-header">
+          <h2>📱 PLAY ON MOBILE & OTHER DEVICES</h2>
+          <p class="mobile-sub">Works seamlessly on <strong>Android, iPhone, iPad, Windows & Mac</strong></p>
+        </div>
+
+        <div class="qr-container">
+          <div class="qr-box">
+            <img id="qrImage" src="qr.svg" alt="Scan QR Code to play on Mobile" width="200" height="200" />
+            <div class="qr-scan-hint">📸 Scan with Phone Camera to Play</div>
+          </div>
+
+          <div class="link-details">
+            <div class="url-input-box">
+              <span class="url-label">Direct Browser Link:</span>
+              <div class="copy-row">
+                <input type="text" id="gameUrlInput" readonly value="https://chan-assets-various-matches.trycloudflare.com" />
+                <button id="copyUrlBtn" class="btn primary-btn">Copy</button>
+              </div>
+            </div>
+
+            <div class="platform-guides">
+              <div class="platform-tip">
+                <strong>🤖 Android:</strong>
+                <span>Open in Chrome $\to$ tap 3 dots $\to$ <em>"Install App"</em> or <em>"Add to Home screen"</em> for full-screen APK experience!</span>
+              </div>
+              <div class="platform-tip">
+                <strong>🍏 iPhone / iPad:</strong>
+                <span>Open in Safari $\to$ tap Share $\to$ <em>"Add to Home Screen"</em>.</span>
+              </div>
+              <div class="platform-tip">
+                <strong>💻 Windows / Mac:</strong>
+                <span>Open link in browser, or click the install icon in address bar.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="closeMobileBtn" class="btn secondary-btn">Back to Main Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause Screen -->
+    <div id="pauseMenu" class="overlay-modal hidden">
+      <div class="modal-card">
+        <h2>GAME PAUSED</h2>
+        <p>Press <kbd>Esc</kbd> or <kbd>P</kbd> to resume</p>
+        <div class="menu-actions">
+          <button id="resumeBtn" class="btn primary-btn">Resume</button>
+          <button id="restartPauseBtn" class="btn secondary-btn">Restart (R)</button>
+          <button id="garagePauseBtn" class="btn warning-btn">Garage & Upgrades</button>
+          <button id="homePauseBtn" class="btn secondary-btn">Main Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverMenu" class="overlay-modal hidden">
+      <div class="modal-card game-over-card">
+        <h1 id="crashReason" class="crash-title">DRIVER DOWN!</h1>
+        <p class="crash-desc" id="crashDesc">Bill hit his head on the rough terrain!</p>
+        
+        <div class="results-grid">
+          <div class="result-box">
+            <span class="res-label">DISTANCE</span>
+            <span class="res-val" id="finalDistance">0 m</span>
+          </div>
+          <div class="result-box">
+            <span class="res-label">COINS EARNED</span>
+            <span class="res-val coin-text" id="finalCoins">+0</span>
+          </div>
+          <div class="result-box">
+            <span class="res-label">DIAMONDS EARNED</span>
+            <span class="res-val diamond-text" id="finalDiamonds">+0</span>
+          </div>
+          <div class="result-box">
+            <span class="res-label">BEST DISTANCE</span>
+            <span class="res-val" id="finalBest">0 m</span>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="retryBtn" class="btn primary-btn large-btn">Play Again (<kbd>Space</kbd>)</button>
+          <button id="garageGameOverBtn" class="btn warning-btn">Garage / Upgrades</button>
+          <button id="homeGameOverBtn" class="btn secondary-btn">Main Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garage & Vehicle Upgrades Screen -->
+    <div id="garageMenu" class="overlay-modal hidden">
+      <div class="modal-card garage-card">
+        <div class="garage-header">
+          <h2>THE GARAGE</h2>
+          <div class="wallet-badges">
+            <div class="wallet-badge">🪙 <span id="garageCoins">0</span></div>
+            <div class="wallet-badge diamond-badge">💎 <span id="garageDiamonds">0</span></div>
+          </div>
+        </div>
+
+        <!-- Vehicle Selector Tabs -->
+        <div class="vehicle-tabs" id="vehicleTabs">
+          <!-- Injected via JS -->
+        </div>
+
+        <!-- Vehicle Preview Area -->
+        <div class="vehicle-showcase">
+          <canvas id="previewCanvas" width="360" height="180"></canvas>
+          <div class="vehicle-info">
+            <h3 id="previewName">Hill Climber</h3>
+            <p id="previewDesc">Classic 4x4 Jeep with balanced physics and suspension.</p>
+            <div id="vehicleUnlockContainer">
+              <button id="selectVehicleBtn" class="btn primary-btn">Select Vehicle</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upgrades Grid -->
+        <div class="upgrades-grid" id="upgradesGrid">
+          <!-- 4 Upgrades: Engine, Suspension, Tires, 4WD/Stability -->
+        </div>
+
+        <div class="garage-footer">
+          <button id="closeGarageBtn" class="btn secondary-btn">Back to Game</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/audio.js"></script>
+  <script src="js/terrain.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/vehicles.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

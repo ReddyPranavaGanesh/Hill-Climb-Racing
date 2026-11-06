@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a90e2" />
+      <stop offset="100%" stop-color="#7ed6df" />
+    </linearGradient>
+    <linearGradient id="hillGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2ed573" />
+      <stop offset="100%" stop-color="#1b7a3e" />
+    </linearGradient>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff4757" />
+      <stop offset="100%" stop-color="#b31224" />
+    </linearGradient>
+    <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffa502" />
+      <stop offset="100%" stop-color="#ff6348" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background Sky -->
+  <rect width="512" height="512" rx="100" fill="url(#skyGrad)" />
+
+  <!-- Sun -->
+  <circle cx="390" cy="110" r="55" fill="url(#sunGrad)" opacity="0.9" />
+
+  <!-- Rolling Hill -->
+  <path d="M 0 350 Q 150 250 320 340 T 512 360 L 512 512 L 0 512 Z" fill="url(#hillGrad)" />
+
+  <!-- Road Dirt Base -->
+  <path d="M 0 430 Q 250 410 512 430 L 512 512 L 0 512 Z" fill="#795548" />
+
+  <!-- Gold Coin in Air -->
+  <g transform="translate(380, 210)">
+    <circle cx="0" cy="0" r="22" fill="#f1c40f" stroke="#b78103" stroke-width="3" />
+    <circle cx="0" cy="0" r="15" fill="#f39c12" />
+    <text x="0" y="7" font-family="sans-serif" font-weight="900" font-size="16" fill="#fff" text-anchor="middle">$</text>
+  </g>
+
+  <!-- Diamond in Air -->
+  <g transform="translate(320, 180) rotate(15)">
+    <polygon points="0,-16 14,0 0,16 -14,0" fill="#00cec9" stroke="#0984e3" stroke-width="2" />
+  </g>
+
+  <!-- Red 4x4 Jeep Climber -->
+  <g transform="translate(200, 290) rotate(-18)">
+    <!-- Chassis Body -->
+    <path d="M -75 5 L -55 -25 L 30 -25 L 65 -5 L 65 15 L -75 15 Z" fill="url(#bodyGrad)" stroke="#660000" stroke-width="3" />
+    <!-- Roll Cage / Windshield -->
+    <path d="M -40 -25 L -10 -55 L 20 -25 Z" fill="none" stroke="#2f3542" stroke-width="7" stroke-linejoin="round" />
+    <!-- Driver Head -->
+    <circle cx="-5" cy="-35" r="14" fill="#ffbe76" stroke="#222" stroke-width="2" />
+    <!-- Helmet -->
+    <path d="M -19 -35 Q -5 -54 9 -35 Z" fill="#ffffff" stroke="#222" stroke-width="2" />
+    <!-- Wheels -->
+    <g transform="translate(-45, 18)">
+      <circle cx="0" cy="0" r="22" fill="#222" stroke="#444" stroke-width="4" />
+      <circle cx="0" cy="0" r="10" fill="#747d8c" />
+      <circle cx="0" cy="0" r="4" fill="#fff" />
+    </g>
+    <g transform="translate(45, 18)">
+      <circle cx="0" cy="0" r="22" fill="#222" stroke="#444" stroke-width="4" />
+      <circle cx="0" cy="0" r="10" fill="#747d8c" />
+      <circle cx="0" cy="0" r="4" fill="#fff" />
+    </g>
+  </g>
+</svg>

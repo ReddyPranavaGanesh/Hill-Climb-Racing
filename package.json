@@ -1,0 +1,21 @@
+{
+  "name": "hill-climb-racing-mac",
+  "version": "1.0.0",
+  "description": "Hill Climb Racing game built for MacBook with keyboard controls, 2D physics, procedural terrain, and Web Audio engine.",
+  "main": "index.html",
+  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "hill-climb-racing",
+    "physics",
+    "macOS"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

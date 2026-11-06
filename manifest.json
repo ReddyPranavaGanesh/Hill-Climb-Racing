@@ -1,0 +1,31 @@
+{
+  "name": "Hill Climb Racing",
+  "short_name": "Hill Climb",
+  "start_url": "./index.html",
+  "id": "hill-climb-racing-app",
+  "display": "standalone",
+  "orientation": "landscape-primary",
+  "background_color": "#1a1a24",
+  "theme_color": "#ff4757",
+  "description": "Hill Climb Racing arcade physics game with vehicles, upgrades, stunts, and touch pedals.",
+  "categories": ["games", "arcade"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
