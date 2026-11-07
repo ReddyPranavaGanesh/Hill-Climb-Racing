@@ -19,24 +19,25 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "▶ Step 2: Creating GitHub repository & pushing code..."
-# Try creating public repo and pushing
-gh repo create hill-climb-racing --public --source=. --remote=origin --push 2>&1 || {
-  echo "Repository might already exist, pushing directly..."
-  git push -u origin main
+echo "▶ Step 2: Committing and pushing latest code to GitHub..."
+git add -A
+git commit -m "feat: updated game assets and physics" 2>/dev/null || true
+git push origin main 2>&1 || {
+  echo "Trying gh push..."
+  gh repo create Hill-Climb-Racing --public --source=. --remote=origin --push 2>&1 || git push -u origin main
 }
 
 echo ""
 echo "▶ Step 3: Enabling free GitHub Pages (Permanent Web Game Link)..."
-gh api --method POST "repos/ReddyPranavaGanesh/hill-climb-racing/pages" \
+gh api --method POST "repos/ReddyPranavaGanesh/Hill-Climb-Racing/pages" \
   -f "source[branch]=main" -f "source[path]=/" 2>/dev/null || true
 
 echo ""
 echo "=========================================================="
 echo "  ✅ SUCCESS! CODE IS NOW ON GITHUB!"
 echo "=========================================================="
-echo "  📁 Repository: https://github.com/ReddyPranavaGanesh/hill-climb-racing"
-echo "  🌐 Live Game:   https://reddypranavaganesh.github.io/hill-climb-racing/"
+echo "  📁 Repository: https://github.com/ReddyPranavaGanesh/Hill-Climb-Racing"
+echo "  🌐 Live Game:   https://reddypranavaganesh.github.io/Hill-Climb-Racing/"
 echo "=========================================================="
 echo ""
 echo "TO GET THE GAME ON YOUR PC:"

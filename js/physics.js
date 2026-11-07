@@ -196,7 +196,6 @@ class VehiclePhysics {
 
     let totalSuspForceY = 0;
     let totalSuspForceX = 0;
-    let totalSuspTorque = 0;
 
     // Rear suspension
     const targetRLen = rGrounded ? Math.max(sMin, Math.min(sMax, rReqLen)) : sMax;
@@ -207,8 +206,6 @@ class VehiclePhysics {
       rSpringForce = Math.max(0, kSusp * rCompression - cSusp * this.chassis.vy);
       totalSuspForceX -= rSpringForce * downX;
       totalSuspForceY -= rSpringForce * downY;
-      // Upward push on rear creates pitch-down torque (+)
-      totalSuspTorque += rSpringForce * (halfW * 0.0035);
     }
     // Smooth wheel strut movement
     this.rearSuspLen += (targetRLen - this.rearSuspLen) * Math.min(1.0, 24 * dt);
@@ -222,8 +219,6 @@ class VehiclePhysics {
       fSpringForce = Math.max(0, kSusp * fCompression - cSusp * this.chassis.vy);
       totalSuspForceX -= fSpringForce * downX;
       totalSuspForceY -= fSpringForce * downY;
-      // Upward push on front creates pitch-up torque (-)
-      totalSuspTorque -= fSpringForce * (halfW * 0.0035);
     }
     this.frontSuspLen += (targetFLen - this.frontSuspLen) * Math.min(1.0, 24 * dt);
     this.frontSuspLen = Math.max(sMin, Math.min(sMax, this.frontSuspLen));
@@ -250,11 +245,14 @@ class VehiclePhysics {
       const tangent = terrain.getTangent(this.chassis.x);
       const slopeAngle = terrain.getSlopeAngle(this.chassis.x);
 
+      let driveF = 0;
+      let brakeF = 0;
+
       // Driving force along terrain
       if (input.gas && this.fuel > 0) {
         const speedRatio = Math.abs(this.chassis.vx) / maxSpeed;
         const powerCurve = Math.max(0.15, 1.0 - speedRatio * 0.5);
-        const driveF = enginePower * powerCurve;
+        driveF = enginePower * powerCurve;
 
         // Drive split (Rear vs Front)
         let traction = 0;
@@ -264,21 +262,14 @@ class VehiclePhysics {
 
         this.chassis.vx += driveF * traction * tangent.x * dt;
         this.chassis.vy += driveF * traction * tangent.y * dt * 0.4;
-
-        // Dynamic Wheelie torque: acceleration pitches the nose up into a wheelie
-        const maxWheelieTorque = 1.8;
-        totalSuspTorque -= Math.min(maxWheelieTorque, driveF * 0.0028);
       }
       // Braking & Reverse
       else if (input.brake) {
         if (this.chassis.vx > 10) {
           // Sharp brake
-          const brakeF = (brakeTorque * (rGrounded ? 0.6 : 0) + brakeTorque * (fGrounded ? 0.6 : 0)) * mapFricMult;
+          brakeF = (brakeTorque * (rGrounded ? 0.6 : 0) + brakeTorque * (fGrounded ? 0.6 : 0)) * mapFricMult;
           this.chassis.vx -= brakeF * tangent.x * dt;
           if (this.chassis.vx < 0) this.chassis.vx = 0;
-
-          // Nose dive torque on hard braking
-          totalSuspTorque += brakeF * 0.0035;
         } else if (this.chassis.vx >= -5) {
           this.chassis.vx *= 0.82;
           if (this.fuel > 0 && Math.abs(this.chassis.vx) < 8) {
@@ -300,36 +291,55 @@ class VehiclePhysics {
       // Slope gravity assist/resistance
       this.chassis.vx += GRAVITY * Math.sin(slopeAngle) * tangent.x * dt;
 
-      // Angular tracking: Only track slope if BOTH wheels are grounded!
+      // Pitch Dynamics on Ground: Gas tilts BACKWARD (wheelie), Brake tilts FORWARD (stoppie)
       if (rGrounded && fGrounded) {
+        // Both wheels on ground: align body to ground slope, with gas lifting nose and brake dipping nose
         const targetAngle = slopeAngle;
         const angleErr = this.chassis.angle - targetAngle;
         const angK = 110 * suspMult;
         const angC = 18 * Math.sqrt(suspMult);
-        const alignTorque = -angK * angleErr - angC * this.chassis.vAngle;
-        this.chassis.vAngle += (totalSuspTorque + alignTorque) * dt;
-      } else if (rGrounded) {
-        // Rear wheel only (WHEELIE): acceleration pitches backwards; brake brings nose down!
-        let wheelieTorque = totalSuspTorque;
+        let groundTorque = -angK * angleErr - angC * this.chassis.vAngle;
+
+        // Holding Gas tilts vehicle BACKWARD (wheelie pitch)
         if (input.gas && this.fuel > 0) {
-          wheelieTorque -= (enginePower * 0.0065 + 1.2);
+          groundTorque -= (driveF * 0.007 + 2.2);
+        }
+        // Holding Brake dips vehicle FORWARD (nose dive pitch)
+        if (input.brake && brakeF > 0) {
+          groundTorque += (brakeF * 0.007 + 2.2);
+        }
+
+        this.chassis.vAngle += groundTorque * dt;
+      } else if (rGrounded) {
+        // Rear wheel only (WHEELIE): Gas strongly pulls nose UP/BACKWARD; Brake slams nose DOWN/FORWARD
+        const relAngle = this.chassis.angle - slopeAngle;
+        let wheelieTorque = 36 * Math.sin(-relAngle); // gravity pulling front down toward slope
+
+        if (input.gas && this.fuel > 0) {
+          // Pressing gas wheelies backward
+          wheelieTorque -= (enginePower * 0.018 + 5.5);
         }
         if (input.brake) {
-          wheelieTorque += (brakeTorque * 0.0055 + 1.2);
+          // Pressing brake slams front down forward
+          wheelieTorque += (brakeTorque * 0.020 + 6.5);
         }
         this.chassis.vAngle += wheelieTorque * dt;
-        this.chassis.vAngle *= (1 - 0.75 * dt);
+        this.chassis.vAngle *= (1 - 0.55 * dt);
       } else if (fGrounded) {
-        // Front wheel only (STOPPIE / NOSE DIVE): hard brake pitches forward; gas brings rear down!
-        let stoppieTorque = totalSuspTorque;
+        // Front wheel only (STOPPIE / NOSE DIVE): Brake strongly pitches FORWARD; Gas pulls rear DOWN/BACKWARD
+        const relAngle = this.chassis.angle - slopeAngle;
+        let stoppieTorque = -36 * Math.sin(relAngle); // gravity pulling rear down toward slope
+
         if (input.brake) {
-          stoppieTorque += (brakeTorque * 0.0075 + 1.5);
+          // Pressing brake pitches forward into stoppie/frontflip
+          stoppieTorque += (brakeTorque * 0.020 + 6.5);
         }
         if (input.gas && this.fuel > 0) {
-          stoppieTorque -= (enginePower * 0.005 + 1.0);
+          // Pressing gas pulls rear down backward
+          stoppieTorque -= (enginePower * 0.018 + 5.5);
         }
         this.chassis.vAngle += stoppieTorque * dt;
-        this.chassis.vAngle *= (1 - 0.75 * dt);
+        this.chassis.vAngle *= (1 - 0.55 * dt);
       }
       this.chassis.angle += this.chassis.vAngle * dt;
 
@@ -355,21 +365,28 @@ class VehiclePhysics {
       }
 
     } else {
-      // Airborne Stunts & Flips: Responsive stunts and flipping
+      // Airborne Stunts & Flips: Gas BACKFLIPS (counter-clockwise ↺), Brake FRONTFLIPS (clockwise ↻)
       this.airTime += dt;
       this.chassis.vx *= (1 - 0.08 * dt);
 
-      // Responsive mid-air flip controls: holding gas backflips, holding brake frontflips
-      const airFlipRate = airTorque * 2.4 * dt;
+      const airFlipRate = airTorque * 3.4 * dt;
       if (input.gas) {
-        this.chassis.vAngle -= airFlipRate;  // Backflip
+        // Pressing Gas = BACKFLIP (rotate counter-clockwise, nose UP)
+        if (this.chassis.vAngle > 0) {
+          this.chassis.vAngle *= (1 - 7.5 * dt); // rapidly cancel forward spin
+        }
+        this.chassis.vAngle -= airFlipRate;
       }
       if (input.brake) {
-        this.chassis.vAngle += airFlipRate;  // Frontflip
+        // Pressing Brake = FRONTFLIP (rotate clockwise, nose DOWN)
+        if (this.chassis.vAngle < 0) {
+          this.chassis.vAngle *= (1 - 7.5 * dt); // rapidly cancel backward spin
+        }
+        this.chassis.vAngle += airFlipRate;
       }
 
-      // Air stabilization drag: higher drag when releasing pedals so flips don't spin uncontrollably
-      const airDrag = (input.gas || input.brake) ? 0.7 : 2.0;
+      // Air stabilization drag when no pedals are pressed
+      const airDrag = (input.gas || input.brake) ? 0.45 : 1.8;
       this.chassis.vAngle *= (1 - airDrag * dt);
 
       // Clamp max mid-air angular velocity
