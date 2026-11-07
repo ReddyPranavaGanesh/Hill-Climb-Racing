@@ -1,6 +1,8 @@
 // Hill Climb Racing - Main Game Loop, Camera, Particle System & Upgrades Manager v3
 // Complete rewrite: rock-solid camera, proper terrain generation, upgrade system
 
+const MAP_KEYS = ['countryside', 'desert', 'arctic', 'highway', 'moon'];
+
 class Game {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -25,13 +27,23 @@ class Game {
     this.sessionDiamonds = 0;
     this.maxAirTimeSession = 0;
 
-    // Upgrades structure per vehicle
+    // Upgrades structure per vehicle (all 7 vehicles)
     this.upgrades = {
       jeep: { engine: 0, suspension: 0, tires: 0, stability: 0 },
       monster: { engine: 0, suspension: 0, tires: 0, stability: 0 },
       buggy: { engine: 0, suspension: 0, tires: 0, stability: 0 },
-      bike: { engine: 0, suspension: 0, tires: 0, stability: 0 }
+      bike: { engine: 0, suspension: 0, tires: 0, stability: 0 },
+      rally: { engine: 0, suspension: 0, tires: 0, stability: 0 },
+      truck: { engine: 0, suspension: 0, tires: 0, stability: 0 },
+      tank: { engine: 0, suspension: 0, tires: 0, stability: 0 }
     };
+
+    // Stage & Map System (Requirements 2 & 7)
+    this.currentMapId = 'countryside';
+    this.unlockedMaps = ['countryside'];
+    this.mapRecords = { countryside: 0, desert: 0, arctic: 0, highway: 0, moon: 0 };
+    this.selectedHomeStageIndex = 0;
+    this.weatherBannerTimeout = null;
 
     // Load persisted data
     this.loadSaveData();
@@ -98,6 +110,9 @@ class Game {
         this.highDistance = data.highDistance || 0;
         this.currentVehicleId = data.currentVehicleId || 'jeep';
         this.unlockedVehicles = data.unlockedVehicles || ['jeep'];
+        this.currentMapId = data.currentMapId || 'countryside';
+        this.unlockedMaps = data.unlockedMaps || ['countryside'];
+        this.mapRecords = Object.assign({ countryside: 0, desert: 0, arctic: 0, highway: 0, moon: 0 }, data.mapRecords || {});
         if (data.upgrades) {
           for (const vKey of Object.keys(this.upgrades)) {
             if (data.upgrades[vKey]) {
@@ -119,6 +134,9 @@ class Game {
         highDistance: this.highDistance,
         currentVehicleId: this.currentVehicleId,
         unlockedVehicles: this.unlockedVehicles,
+        currentMapId: this.currentMapId,
+        unlockedMaps: this.unlockedMaps,
+        mapRecords: this.mapRecords,
         upgrades: this.upgrades
       };
       localStorage.setItem('hcr_save_data_v2', JSON.stringify(payload));
@@ -324,6 +342,16 @@ class Game {
     addFastClick('closeMobileBtn', () => this.closeMobileModal());
     addFastClick('copyUrlBtn', () => this.copyGameUrl());
 
+    // Stage / Map Selector Actions (Requirements 2 & 7)
+    addFastClick('prevStageBtn', () => {
+      this.selectedHomeStageIndex = (this.selectedHomeStageIndex - 1 + MAP_KEYS.length) % MAP_KEYS.length;
+      this.renderHomeStageSelector();
+    });
+    addFastClick('nextStageBtn', () => {
+      this.selectedHomeStageIndex = (this.selectedHomeStageIndex + 1) % MAP_KEYS.length;
+      this.renderHomeStageSelector();
+    });
+
     // In-game & Pause Actions
     addFastClick('pauseBtn', () => this.togglePause());
     addFastClick('resumeBtn', () => this.togglePause());
@@ -339,6 +367,7 @@ class Game {
   }
 
   initGameWorld() {
+    this.terrain.setMap(this.currentMapId);
     this.terrain.reset();
     const vDef = VEHICLE_DEFS[this.currentVehicleId];
     this.physics = new VehiclePhysics(vDef.config);
@@ -359,6 +388,16 @@ class Game {
     this.camera.targetY = camY;
     this.camera.zoom = 1.0;
     this.camera.initialized = true;
+
+    // Update HUD stage info
+    const stageEl = document.getElementById('stageName');
+    if (stageEl && this.terrain.mapConfig) {
+      stageEl.textContent = this.terrain.mapConfig.name;
+    }
+    const recordEl = document.getElementById('recordVal');
+    if (recordEl) {
+      recordEl.textContent = `Record: ${this.mapRecords[this.currentMapId] || 0} m`;
+    }
   }
 
   updatePedalsVisibility() {
@@ -435,9 +474,110 @@ class Game {
     document.getElementById('homeDiamonds').textContent = this.diamonds;
     document.getElementById('homeVehicleName').textContent = VEHICLE_DEFS[this.currentVehicleId].name;
 
+    this.selectedHomeStageIndex = MAP_KEYS.indexOf(this.currentMapId);
+    if (this.selectedHomeStageIndex < 0) this.selectedHomeStageIndex = 0;
+    this.renderHomeStageSelector();
+
     this.updatePedalsVisibility();
     this.renderHomeVehiclePreview();
     this.updateHUD();
+  }
+
+  renderHomeStageSelector() {
+    const mapKey = MAP_KEYS[this.selectedHomeStageIndex];
+    const map = MAP_DEFS[mapKey];
+    if (!map) return;
+
+    const isUnlocked = this.unlockedMaps.includes(mapKey);
+    const isCurrent = this.currentMapId === mapKey;
+
+    const nameEl = document.getElementById('homeStageName');
+    const descEl = document.getElementById('homeStageDesc');
+    const tagEl = document.getElementById('homeStageTag');
+    const specsEl = document.getElementById('homeStageSpecs');
+    const actionBtn = document.getElementById('stageActionBtn');
+
+    if (nameEl) nameEl.textContent = map.name;
+    if (descEl) descEl.textContent = map.desc;
+    if (specsEl) specsEl.innerHTML = `<span>Gravity: ${map.gravityMult}x</span> • <span>Grip: ${Math.round(map.frictionMult * 100)}%</span>`;
+
+    if (tagEl) {
+      if (map.price === 0) {
+        tagEl.textContent = 'FREE';
+        tagEl.className = 'stage-tag free-tag';
+      } else if (isUnlocked) {
+        tagEl.textContent = 'UNLOCKED';
+        tagEl.className = 'stage-tag unlocked-tag';
+      } else {
+        tagEl.textContent = `🪙 ${map.price.toLocaleString()}`;
+        tagEl.className = 'stage-tag locked-tag';
+      }
+    }
+
+    if (actionBtn) {
+      if (!isUnlocked) {
+        actionBtn.className = 'btn warning-btn small-btn';
+        actionBtn.textContent = `Unlock 🪙 ${map.price.toLocaleString()}`;
+        actionBtn.disabled = this.coins < map.price;
+        actionBtn.onclick = () => {
+          if (this.coins >= map.price) {
+            this.coins -= map.price;
+            this.unlockedMaps.push(mapKey);
+            this.currentMapId = mapKey;
+            this.saveData();
+            this.renderHomeStageSelector();
+            document.getElementById('homeCoins').textContent = this.coins;
+            this.initGameWorld();
+          }
+        };
+      } else {
+        actionBtn.className = `btn ${isCurrent ? 'secondary-btn' : 'primary-btn'} small-btn`;
+        actionBtn.textContent = isCurrent ? 'Equipped ✓' : 'Equip Stage';
+        actionBtn.disabled = isCurrent;
+        actionBtn.onclick = () => {
+          this.currentMapId = mapKey;
+          this.saveData();
+          this.renderHomeStageSelector();
+          this.initGameWorld();
+        };
+      }
+    }
+  }
+
+  showWeatherBanner(title) {
+    const banner = document.getElementById('weatherBanner');
+    const textEl = document.getElementById('weatherBannerText');
+    const iconEl = document.getElementById('weatherBannerIcon');
+    if (!banner || !textEl) return;
+
+    const weatherIcons = {
+      sunny: '☀️',
+      rain: '⛈️',
+      sunset: '🌅',
+      snow: '❄️',
+      night: '🌙'
+    };
+    const currentW = this.terrain.currentWeather;
+    if (iconEl) iconEl.textContent = weatherIcons[currentW] || '🌤️';
+    textEl.textContent = title;
+
+    banner.classList.remove('hidden');
+    clearTimeout(this.weatherBannerTimeout);
+    this.weatherBannerTimeout = setTimeout(() => {
+      banner.classList.add('hidden');
+    }, 3500);
+
+    const hudW = document.getElementById('hudWeather');
+    if (hudW) {
+      const names = {
+        sunny: '☀️ Sunny',
+        rain: '⛈️ Storm',
+        sunset: '🌅 Sunset',
+        snow: '❄️ Snow',
+        night: '🌙 Night'
+      };
+      hudW.textContent = names[currentW] || currentW;
+    }
   }
 
   startGame() {
@@ -581,6 +721,9 @@ class Game {
     if (this.currentDistance > this.highDistance) {
       this.highDistance = this.currentDistance;
     }
+    if (this.currentDistance > (this.mapRecords[this.currentMapId] || 0)) {
+      this.mapRecords[this.currentMapId] = this.currentDistance;
+    }
 
     if (this.physics.airTime > this.maxAirTimeSession) {
       this.maxAirTimeSession = this.physics.airTime;
@@ -686,9 +829,27 @@ class Game {
 
   updateHUD() {
     document.getElementById('distanceVal').innerHTML = `${this.currentDistance} <small>m</small>`;
-    document.getElementById('recordVal').textContent = `Record: ${this.highDistance} m`;
+    const mapBest = Math.max(this.highDistance, this.mapRecords[this.currentMapId] || 0);
+    document.getElementById('recordVal').textContent = `Record: ${mapBest} m`;
     document.getElementById('coinsVal').textContent = `🪙 ${this.coins}`;
     document.getElementById('diamondsVal').textContent = `💎 ${this.diamonds}`;
+
+    const stageEl = document.getElementById('stageName');
+    if (stageEl && this.terrain.mapConfig) {
+      stageEl.textContent = this.terrain.mapConfig.name;
+    }
+
+    const hudW = document.getElementById('hudWeather');
+    if (hudW) {
+      const weatherMap = {
+        sunny: '☀️ Sunny',
+        rain: '⛈️ Storm',
+        sunset: '🌅 Sunset',
+        snow: '❄️ Snow',
+        night: '🌙 Night'
+      };
+      hudW.textContent = weatherMap[this.terrain.currentWeather] || '☀️ Sunny';
+    }
 
     // Fuel Bar
     const fuelPercent = Math.max(0, Math.min(100, this.physics.fuel));
@@ -698,6 +859,7 @@ class Game {
     const fuelWarn = document.getElementById('fuelWarning');
     if (fuelPercent < 20 && fuelPercent > 0) {
       fuelWarn.classList.remove('hidden');
+      if (this.state === 'PLAYING') window.soundSystem.playLowFuelWarning();
     } else {
       fuelWarn.classList.add('hidden');
     }
@@ -718,10 +880,7 @@ class Game {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.viewWidth, this.viewHeight);
 
-    // 1. Draw Parallax Sky & Mountain Backgrounds
-    this.drawBackground(ctx);
-
-    // 2. Camera Transform for World Space
+    // Camera Transform for World Space
     ctx.save();
     // Center-origin zoom
     ctx.translate(this.viewWidth * 0.5, this.viewHeight * 0.5);
@@ -729,13 +888,13 @@ class Game {
     ctx.translate(-this.viewWidth * 0.5, -this.viewHeight * 0.5);
     ctx.translate(-this.camera.x, -this.camera.y);
 
-    // 3. Draw Terrain (Hills, Grass, Dirt, Bridges & Collectibles)
-    this.terrain.draw(ctx, this.camera, this.viewWidth / this.camera.zoom, this.viewHeight / this.camera.zoom);
+    // Draw Terrain (Parallax dynamic skies & mountains, 1-min weather, ravines & bridges, headlights & collectibles)
+    this.terrain.draw(ctx, this.camera, this.viewWidth / this.camera.zoom, this.viewHeight / this.camera.zoom, { chassis: this.physics.chassis, vehicleId: this.currentVehicleId });
 
-    // 4. Draw Particles
+    // Draw Particles
     this.drawParticles(ctx);
 
-    // 5. Draw Active Vehicle
+    // Draw Active Vehicle
     this.drawVehicle(ctx);
 
     ctx.restore();

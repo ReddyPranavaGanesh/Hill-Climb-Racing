@@ -122,9 +122,16 @@ class VehiclePhysics {
     const airTorque   = cfg.airControlTorque * airMult;
     const maxSpeed    = cfg.maxSpeed * (1 + (upgrades.engine || 0) * 0.06);
 
-    // 1. Fuel drain
+    // Map modifiers (e.g. Moon low gravity 0.35x, Arctic low friction 0.74x)
+    const mapGravMult = (terrain && terrain.mapConfig && terrain.mapConfig.gravityMult) || 1.0;
+    const mapFricMult = (terrain && terrain.mapConfig && terrain.mapConfig.frictionMult) || 1.0;
+
+    // 1. Fuel drain: Faster, realistic fuel burn (Requirement 5)
+    // Full tank lasts ~22-26s under active gas, making fuel canisters rewarding and crucial!
     if (this.fuel > 0) {
-      const drain = (0.35 + (input.gas ? 1.7 : 0) + (input.brake ? 0.5 : 0)) * dt;
+      const isThrottling = input.gas;
+      const isClimbing = Math.abs(this.chassis.vAngle) > 0.18 || this.chassis.vy < -60;
+      const drain = (1.25 + (isThrottling ? 3.75 : 0) + (isClimbing ? 1.4 : 0) + (input.brake ? 0.6 : 0)) * dt;
       this.fuel = Math.max(0, this.fuel - drain);
       if (this.fuel <= 0 && !this.outOfFuel) this.outOfFuel = true;
     }
@@ -230,8 +237,8 @@ class VehiclePhysics {
     this.frontWheel.y = fAnchor.y + this.frontSuspLen * downY;
     this.frontWheel.suspLen = this.frontSuspLen;
 
-    // 5. Environmental Forces & Driving
-    const GRAVITY = 720;
+    // 5. Environmental Forces & Driving (Requirement 2 & 7: Map gravity & friction)
+    const GRAVITY = 720 * mapGravMult;
     this.chassis.vy += GRAVITY * dt;
 
     if (anyGrounded) {
@@ -253,7 +260,7 @@ class VehiclePhysics {
         let traction = 0;
         if (rGrounded) traction += (1.0 - cfg.fourWheelDrive * 0.35);
         if (fGrounded) traction += cfg.fourWheelDrive;
-        traction = Math.min(1.2, traction);
+        traction = Math.min(1.2, traction) * mapFricMult;
 
         this.chassis.vx += driveF * traction * tangent.x * dt;
         this.chassis.vy += driveF * traction * tangent.y * dt * 0.4;
@@ -266,7 +273,7 @@ class VehiclePhysics {
       else if (input.brake) {
         if (this.chassis.vx > 10) {
           // Sharp brake
-          const brakeF = brakeTorque * (rGrounded ? 0.6 : 0) + brakeTorque * (fGrounded ? 0.6 : 0);
+          const brakeF = (brakeTorque * (rGrounded ? 0.6 : 0) + brakeTorque * (fGrounded ? 0.6 : 0)) * mapFricMult;
           this.chassis.vx -= brakeF * tangent.x * dt;
           if (this.chassis.vx < 0) this.chassis.vx = 0;
 
@@ -275,12 +282,12 @@ class VehiclePhysics {
         } else if (this.chassis.vx >= -5) {
           this.chassis.vx *= 0.82;
           if (this.fuel > 0 && Math.abs(this.chassis.vx) < 8) {
-            this.chassis.vx -= enginePower * 0.35 * dt;
+            this.chassis.vx -= enginePower * 0.35 * dt * mapFricMult;
           }
         } else {
           // Reverse
           if (this.fuel > 0) {
-            const revF = enginePower * 0.42;
+            const revF = enginePower * 0.42 * mapFricMult;
             this.chassis.vx -= revF * tangent.x * dt;
             if (this.chassis.vx < -180) this.chassis.vx = -180;
           }
@@ -323,18 +330,26 @@ class VehiclePhysics {
       }
 
     } else {
-      // Airborne Stunts & Flips
+      // Airborne Stunts & Flips (Requirement 3: Fix car flipping too fast & smooth rotation)
       this.airTime += dt;
-      this.chassis.vx *= (1 - 0.10 * dt);
+      this.chassis.vx *= (1 - 0.08 * dt);
 
-      // Mid-air flip controls: strong responsive flips on gas (backflip) and brake (frontflip)
+      // Smooth, deliberate stunt flips with responsive control
+      const airFlipRate = airTorque * 0.48 * dt;
       if (input.gas) {
-        this.chassis.vAngle -= airTorque * 1.6 * dt;  // Backflip
+        this.chassis.vAngle -= airFlipRate;  // Backflip
       }
       if (input.brake) {
-        this.chassis.vAngle += airTorque * 1.6 * dt;  // Frontflip
+        this.chassis.vAngle += airFlipRate;  // Frontflip
       }
-      this.chassis.vAngle *= (1 - 1.1 * dt); // Low drag so flips continue smoothly with momentum
+
+      // Air stabilization drag: higher drag when releasing pedals so flips don't spin uncontrollably
+      const airDrag = (input.gas || input.brake) ? 1.2 : 2.8;
+      this.chassis.vAngle *= (1 - airDrag * dt);
+
+      // Clamp max mid-air angular velocity to prevent dizzying, uncontrollable tumble
+      const maxAirSpin = 4.8; // ~0.76 rotations/sec max
+      this.chassis.vAngle = Math.max(-maxAirSpin, Math.min(maxAirSpin, this.chassis.vAngle));
       this.chassis.angle += this.chassis.vAngle * dt;
 
       // Track stunt rotation
@@ -456,12 +471,14 @@ class VehiclePhysics {
 
   evaluateLandedStunts() {
     const fullFlips = Math.round(this.totalAirRotation / (Math.PI * 2));
-    if (fullFlips >= 1) {
-      window.gameInstance.triggerStunt('FRONT FLIP!', 1000 * fullFlips);
-    } else if (fullFlips <= -1) {
-      window.gameInstance.triggerStunt('BACKFLIP!', 1000 * Math.abs(fullFlips));
-    } else if (this.airTime > 1.2) {
-      window.gameInstance.triggerStunt(`AIR TIME ${this.airTime.toFixed(1)}s!`, Math.floor(this.airTime * 350));
+    if (window.gameInstance && window.gameInstance.triggerStunt) {
+      if (fullFlips >= 1) {
+        window.gameInstance.triggerStunt('FRONT FLIP!', 1000 * fullFlips);
+      } else if (fullFlips <= -1) {
+        window.gameInstance.triggerStunt('BACKFLIP!', 1000 * Math.abs(fullFlips));
+      } else if (this.airTime > 1.2) {
+        window.gameInstance.triggerStunt(`AIR TIME ${this.airTime.toFixed(1)}s!`, Math.floor(this.airTime * 350));
+      }
     }
   }
 
@@ -474,18 +491,18 @@ class VehiclePhysics {
       if (dist < pickupRadius + item.radius) {
         item.collected = true;
         if (item.type === 'coin') {
-          window.soundSystem.playCoin();
-          window.gameInstance.addCoins(item.value || 50);
+          if (window.soundSystem) window.soundSystem.playCoin();
+          if (window.gameInstance && window.gameInstance.addCoins) window.gameInstance.addCoins(item.value || 50);
         } else if (item.type === 'diamond') {
-          window.soundSystem.playDiamond();
-          window.gameInstance.addDiamond(item.value || 1);
-          window.gameInstance.showStuntBanner('💎 DIAMOND!', '+1 DIAMOND  +500 COINS');
+          if (window.soundSystem) window.soundSystem.playDiamond();
+          if (window.gameInstance && window.gameInstance.addDiamond) window.gameInstance.addDiamond(item.value || 1);
+          if (window.gameInstance && window.gameInstance.showStuntBanner) window.gameInstance.showStuntBanner('💎 DIAMOND!', '+1 DIAMOND  +500 COINS');
         } else if (item.type === 'fuel') {
-          window.soundSystem.playFuel();
+          if (window.soundSystem) window.soundSystem.playFuel();
           this.fuel = 100.0;
           this.outOfFuel = false;
           this.stoppedOutOfFuelTimer = 0;
-          window.gameInstance.showStuntBanner('⛽ FUEL TANK!', '+100% FUEL');
+          if (window.gameInstance && window.gameInstance.showStuntBanner) window.gameInstance.showStuntBanner('⛽ FUEL TANK!', '+100% FUEL');
         }
       }
     }

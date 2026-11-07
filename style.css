@@ -1196,3 +1196,226 @@ kbd {
     height: 140px;
   }
 }
+
+/* ==================== MULTI-MAP & STAGE SYSTEM STYLES (Req 2 & 7) ==================== */
+.home-selection-grid {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  width: 100%;
+  max-width: 660px;
+  margin: 12px 0 16px;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.home-showcase {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-v-label {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #a4b0be;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.home-v-label strong {
+  color: #fff;
+}
+
+.home-stage-box {
+  flex: 1;
+  background: linear-gradient(145deg, rgba(30, 39, 46, 0.85), rgba(15, 20, 25, 0.95));
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.stage-badge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.stage-tag {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.stage-tag.free-tag {
+  background: #2ed573;
+  color: #fff;
+}
+
+.stage-tag.unlocked-tag {
+  background: #3742fa;
+  color: #fff;
+}
+
+.stage-tag.locked-tag {
+  background: #ffa502;
+  color: #1e272e;
+}
+
+.stage-weather {
+  font-size: 11px;
+  color: #ced6e0;
+  font-weight: 600;
+}
+
+.stage-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 2px 0 4px;
+  letter-spacing: 0.5px;
+}
+
+.stage-desc {
+  font-size: 12px;
+  color: #a4b0be;
+  line-height: 1.35;
+  margin: 0 0 8px;
+  flex: 1;
+}
+
+.stage-specs {
+  font-size: 11px;
+  color: #ffa502;
+  font-weight: 700;
+  margin-bottom: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.stage-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.map-nav-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.map-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+.small-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  flex: 1;
+}
+
+/* ==================== WEATHER NOTIFICATION BANNER (Req 9) ==================== */
+.weather-banner {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(20, 24, 33, 0.95), rgba(44, 62, 80, 0.95));
+  border: 2px solid #00d2d3;
+  box-shadow: 0 8px 30px rgba(0, 210, 211, 0.35);
+  border-radius: 30px;
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 120;
+  pointer-events: none;
+  animation: bannerSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bannerSlideIn {
+  0% { opacity: 0; transform: translate(-50%, -20px) scale(0.9); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.weather-icon {
+  font-size: 24px;
+}
+
+.weather-text-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.weather-sub {
+  font-size: 9px;
+  color: #00d2d3;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.weather-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+/* Samsung Galaxy and Mobile Performance Optimizations (Requirement 6) */
+html, body {
+  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
+  overscroll-behavior-x: none !important;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+#game-container, canvas#gameCanvas {
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+}
+
+.pedal-wrapper, .pedal-face, .map-nav-btn {
+  touch-action: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+@media (max-width: 600px) {
+  .home-selection-grid {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

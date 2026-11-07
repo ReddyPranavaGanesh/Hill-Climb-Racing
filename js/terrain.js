@@ -1,67 +1,206 @@
-// Hill Climb Racing - Infinite Procedural Terrain & Collectibles System v4
-// Deterministic Hills, Mileage Signs, Procedural Vegetation, Clean Spread-Out Collectibles
+// Hill Climb Racing - Procedural Terrain, Multi-Map System, Dynamic Weather & Functional Suspension Bridges v2
+// 5 Unique Worlds: Countryside, Desert, Arctic Snow, Highway, and The Moon (Low Gravity!)
+// Dynamic 1-Minute Weather Cycle: Sunny, Thunderstorm, Sunset, Blizzard, Starry Night
+// Functional Bridges over deep chasms/ravines!
 
-// Polyfill for roundRect on older browser engines
-if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
-  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r = 0) {
-    if (typeof r === 'number') {
-      r = Math.min(r, w / 2, h / 2);
-      this.moveTo(x + r, y);
-      this.arcTo(x + w, y, x + w, y + h, r);
-      this.arcTo(x + w, y + h, x, y + h, r);
-      this.arcTo(x, y + h, x, y, r);
-      this.arcTo(x, y, x + w, y, r);
-      this.closePath();
-    }
-    return this;
-  };
-}
+const MAP_DEFS = {
+  countryside: {
+    id: 'countryside',
+    name: 'Countryside',
+    desc: 'Lush green rolling hills with peaceful oak trees and wooden fences.',
+    price: 0,
+    gravityMult: 1.0,
+    frictionMult: 1.0,
+    surfaceGrassColor: '#2ed573',
+    surfaceGrassEdge: '#26af5f',
+    dirtTopColor: '#795548',
+    dirtBottomColor: '#3e2723',
+    skyTop: '#4a90e2',
+    skyBottom: '#a8d8ea',
+    mountainColor: '#204729',
+    hillsColor: '#2e7d32',
+    landmark: 'tree'
+  },
+  desert: {
+    id: 'desert',
+    name: 'Desert Dunes',
+    desc: 'Rolling golden sand dunes, rocky mesas, and giant saguaro cacti.',
+    price: 20000,
+    gravityMult: 1.0,
+    frictionMult: 0.92,
+    surfaceGrassColor: '#f5cd79',
+    surfaceGrassEdge: '#e58e26',
+    dirtTopColor: '#e58e26',
+    dirtBottomColor: '#871c1c',
+    skyTop: '#e67e22',
+    skyBottom: '#f8c291',
+    mountainColor: '#78281f',
+    hillsColor: '#b71540',
+    landmark: 'cactus'
+  },
+  arctic: {
+    id: 'arctic',
+    name: 'Arctic Snow',
+    desc: 'Frozen mountain passes, snowdrifts, and icy slopes. Watch your traction!',
+    price: 45000,
+    gravityMult: 1.0,
+    frictionMult: 0.74, // Low friction ice drifting!
+    surfaceGrassColor: '#ffffff',
+    surfaceGrassEdge: '#dff9fb',
+    dirtTopColor: '#74b9ff',
+    dirtBottomColor: '#0984e3',
+    skyTop: '#2980b9',
+    skyBottom: '#c7ecee',
+    mountainColor: '#4b6584',
+    hillsColor: '#487eb0',
+    landmark: 'pine'
+  },
+  highway: {
+    id: 'highway',
+    name: 'Highway',
+    desc: 'Smooth asphalt speedway with lane markings and bridges. High-speed racing!',
+    price: 80000,
+    gravityMult: 1.0,
+    frictionMult: 1.25, // High grip asphalt
+    surfaceGrassColor: '#2f3542',
+    surfaceGrassEdge: '#57606f',
+    dirtTopColor: '#1e272e',
+    dirtBottomColor: '#0c1017',
+    skyTop: '#34495e',
+    skyBottom: '#bdc3c7',
+    mountainColor: '#1e272e',
+    hillsColor: '#2f3542',
+    landmark: 'lightpost'
+  },
+  moon: {
+    id: 'moon',
+    name: 'The Moon',
+    desc: 'Low lunar gravity (0.35x)! Massive floaty jumps and cosmic stunt air-time.',
+    price: 125000,
+    gravityMult: 0.35, // Low lunar gravity! (Req 2 & 7)
+    frictionMult: 0.88,
+    surfaceGrassColor: '#d2dae2',
+    surfaceGrassEdge: '#808e9b',
+    dirtTopColor: '#718093',
+    dirtBottomColor: '#1e272e',
+    skyTop: '#05050f',
+    skyBottom: '#0b0c1b',
+    mountainColor: '#11141a',
+    hillsColor: '#2d3436',
+    landmark: 'crater'
+  }
+};
+
+const WEATHER_TYPES = ['sunny', 'rain', 'sunset', 'snow', 'night'];
 
 class Terrain {
-  constructor() {
+  constructor(mapId = 'countryside') {
+    this.mapId = mapId;
     this.reset();
+  }
+
+  setMap(mapId) {
+    if (MAP_DEFS[mapId]) {
+      this.mapId = mapId;
+      this.reset();
+    }
+  }
+
+  get mapConfig() {
+    return MAP_DEFS[this.mapId] || MAP_DEFS.countryside;
   }
 
   reset() {
     this.seed = Math.floor(Math.random() * 100000);
-    this.collectibles = []; // Coins, Diamonds & Fuel cans
-    this.bridges = [];      // Dynamic suspension bridges
+    this.collectibles = [];
+    this.bridges = [];
     this.chunkSize = 650;
     this.generatedUpToX = -400;
     this.lastFuelX = -100;
     this.lastCoinX = 200;
     this.lastDiamondX = 400;
 
-    // Generate initial terrain and items for the first 2800px
-    this.ensureGenerated(2800);
+    // Weather System (Requirement 9: Changes every 60s)
+    this.weatherIndex = 0;
+    this.weatherTimer = 0;
+    this.weatherDuration = 60.0; // Exactly 1 minute per weather
+    this.lightningFlash = 0;
+    this.nextLightningTimer = 8 + Math.random() * 8;
+
+    // Rain & Snow Particles
+    this.particles = [];
+    this.initWeatherParticles();
+
+    // Initial terrain generation
+    this.ensureGenerated(3200);
+  }
+
+  initWeatherParticles() {
+    this.rainDrops = [];
+    for (let i = 0; i < 90; i++) {
+      this.rainDrops.push({
+        x: Math.random() * 1600,
+        y: Math.random() * 900,
+        len: 14 + Math.random() * 10,
+        speed: 700 + Math.random() * 300
+      });
+    }
+
+    this.snowFlakes = [];
+    for (let i = 0; i < 75; i++) {
+      this.snowFlakes.push({
+        x: Math.random() * 1600,
+        y: Math.random() * 900,
+        radius: 1.5 + Math.random() * 2.5,
+        speedY: 60 + Math.random() * 70,
+        speedX: -20 + Math.random() * 40,
+        swayPhase: Math.random() * Math.PI * 2
+      });
+    }
   }
 
   // Smooth continuous height function y = f(x)
-  // Baseline start at y = 450
   getBaseHeight(x) {
-    if (x < 100) {
-      return 450;
-    }
+    if (x < 100) return 450;
 
     const dist = x - 100;
-    // Hermite smoothstep transition from flat starting line into undulating hills
     const blend = Math.min(1.0, dist / 260);
     const smooth = blend * blend * (3 - 2 * blend);
 
-    const difficulty = Math.min(1.5, 1.0 + dist / 9000);
+    const difficulty = Math.min(1.6, 1.0 + dist / 9000);
 
-    // Large rolling hills
-    const h1 = Math.sin(dist * 0.0020) * 135 * difficulty;
-    // Medium hills & valleys
-    const h2 = Math.sin(dist * 0.0052) * 60 * difficulty;
-    // Small bumps & dips
-    const h3 = (Math.cos(dist * 0.0105) - 1) * 18;
-    // Gentle long-wave plateau swells
-    const h4 = Math.sin(dist * 0.00075) * 65;
+    // Map-specific terrain profiling
+    let h1, h2, h3, h4;
+    if (this.mapId === 'desert') {
+      // Sweeping tall dunes with sharp crests
+      h1 = Math.sin(dist * 0.0016) * 160 * difficulty;
+      h2 = (Math.cos(dist * 0.0038) - 0.5) * 80 * difficulty;
+      h3 = Math.sin(dist * 0.008) * 20;
+      h4 = Math.sin(dist * 0.0006) * 70;
+    } else if (this.mapId === 'highway') {
+      // Fast, gentle highway inclines
+      h1 = Math.sin(dist * 0.0012) * 80 * difficulty;
+      h2 = Math.sin(dist * 0.0035) * 35;
+      h3 = (Math.cos(dist * 0.008) - 1) * 8;
+      h4 = Math.sin(dist * 0.0005) * 50;
+    } else if (this.mapId === 'moon') {
+      // Craters and sharp steep rims
+      h1 = Math.sin(dist * 0.0018) * 140 * difficulty;
+      h2 = Math.sin(dist * 0.0055) * 75 * difficulty;
+      h3 = Math.cos(dist * 0.012) * 25;
+      h4 = Math.sin(dist * 0.0007) * 80;
+    } else {
+      // Countryside & Arctic rolling hills
+      h1 = Math.sin(dist * 0.0020) * 135 * difficulty;
+      h2 = Math.sin(dist * 0.0052) * 60 * difficulty;
+      h3 = (Math.cos(dist * 0.0105) - 1) * 18;
+      h4 = Math.sin(dist * 0.00075) * 65;
+    }
 
     return 450 + (h1 + h2 + h3 + h4) * smooth;
   }
 
+  // Find bridge spanning position x
   getBridgeAt(x) {
     for (const b of this.bridges) {
       if (x >= b.startX && x <= b.endX) {
@@ -71,10 +210,31 @@ class Terrain {
     return null;
   }
 
-  getHeight(x) {
+  // Actual Ground Surface underneath (including deep chasms under bridges! Requirement 8)
+  getGroundSurface(x) {
     const bridge = this.getBridgeAt(x);
     if (bridge) {
-      return bridge.getHeight(x);
+      // Functional Canyon Ravine under Bridge!
+      const t = (x - bridge.startX) / bridge.length;
+      // Chasm drops 140px to 190px below the deck!
+      const chasmDrop = Math.sin(t * Math.PI) * 165;
+      const deckBaseY = bridge.yStart + t * (bridge.yEnd - bridge.yStart);
+      return deckBaseY + chasmDrop;
+    }
+    return this.getBaseHeight(x);
+  }
+
+  // Driving surface height (if on bridge, return flexible plank height; else ground height)
+  getHeight(x, vehicleY = null) {
+    const bridge = this.getBridgeAt(x);
+    if (bridge) {
+      const bridgeH = bridge.getHeight(x);
+      // If vehicle is riding across bridge deck
+      if (vehicleY === null || vehicleY < bridgeH + 35) {
+        return bridgeH;
+      }
+      // If car plunged into the ravine, it hits the canyon ground floor
+      return this.getGroundSurface(x);
     }
     return this.getBaseHeight(x);
   }
@@ -86,10 +246,7 @@ class Terrain {
     const dx = delta * 2;
     const dy = y2 - y1;
     const len = Math.hypot(dx, dy) || 1;
-    return {
-      x: dx / len,
-      y: dy / len
-    };
+    return { x: dx / len, y: dy / len };
   }
 
   getSlopeAngle(x) {
@@ -100,104 +257,145 @@ class Terrain {
   }
 
   ensureGenerated(targetX) {
-    while (this.generatedUpToX < targetX + 1600) {
-      const startX = this.generatedUpToX;
-      const endX = startX + this.chunkSize;
-      this.generateChunk(startX, endX);
-      this.generatedUpToX = endX;
+    while (this.generatedUpToX < targetX) {
+      const nextX = this.generatedUpToX + this.chunkSize;
+      this.generateChunk(this.generatedUpToX, nextX);
+      this.generatedUpToX = nextX;
     }
   }
 
-  // Check if position is safe from other collectibles
   isFarFromCollectibles(x, minDist = 140) {
     return !this.collectibles.some(c => Math.abs(c.x - x) < minDist && !c.collected);
   }
 
   generateChunk(startX, endX) {
-    // 1. Suspension Bridges beyond 700m
-    if (startX > 1100 && Math.random() < 0.22 && !this.bridges.some(b => Math.abs(b.startX - startX) < 1000)) {
-      const bLen = 240 + Math.random() * 140;
-      this.bridges.push(new SuspensionBridge(startX + 100, startX + 100 + bLen, this));
+    // 1. Functional Suspension Bridges over Deep Chasms (Requirement 8)
+    if (startX > 950 && Math.random() < 0.24 && !this.bridges.some(b => Math.abs(b.startX - startX) < 1100)) {
+      const bLen = 260 + Math.random() * 160;
+      this.bridges.push(new SuspensionBridge(startX + 120, startX + 120 + bLen, this));
     }
 
-    // 2. FUEL CANISTERS (Isolated every ~1500 - 1900px / ~150-190m)
-    if (startX - this.lastFuelX > 1500 + Math.random() * 400) {
+    // 2. FUEL CANISTERS (Every ~1300 - 1800px / ~130-180m)
+    if (startX - this.lastFuelX > 1300 + Math.random() * 400) {
       const fuelX = startX + 220 + Math.random() * 100;
-      if (this.isFarFromCollectibles(fuelX, 180)) {
+      if (this.isFarFromCollectibles(fuelX, 160)) {
         const fuelY = this.getHeight(fuelX) - 38;
         this.collectibles.push({
           type: 'fuel',
           x: fuelX,
           y: fuelY,
-          radius: 20,
-          collected: false
+          radius: 18,
+          collected: false,
+          animOffset: Math.random() * Math.PI
         });
         this.lastFuelX = fuelX;
       }
     }
 
-    // 3. DIAMONDS (Very rare gems on peaks every ~1800 - 2600px)
-    if (startX - this.lastDiamondX > 1800 + Math.random() * 800) {
-      const diaX = startX + 350 + Math.random() * 120;
-      if (this.isFarFromCollectibles(diaX, 220)) {
-        const groundY = this.getHeight(diaX);
-        const diaY = groundY - 55 - Math.random() * 30;
+    // 3. DIAMONDS (Every ~1800 - 2600px)
+    if (startX - this.lastDiamondX > 1800 + Math.random() * 700) {
+      const diaX = startX + 340 + Math.random() * 120;
+      if (this.isFarFromCollectibles(diaX, 140)) {
+        const diaY = this.getHeight(diaX) - 45;
         this.collectibles.push({
           type: 'diamond',
           x: diaX,
           y: diaY,
-          value: 1, // 1 Diamond (also awards bonus +500 coins)
-          radius: 18,
+          radius: 16,
           collected: false,
-          animOffset: Math.random() * Math.PI * 2
+          value: 1,
+          animOffset: Math.random() * Math.PI
         });
         this.lastDiamondX = diaX;
       }
     }
 
-    // 4. COIN ARCS (Reduced availability: spaced 850 - 1300px apart, 2 to 3 coins per group)
-    if (startX - this.lastCoinX > 850 + Math.random() * 450) {
-      const arcStartX = startX + 140;
-      const numCoins = 2 + Math.floor(Math.random() * 2); // 2 or 3 coins only (scarcity)
-      const coinSpacing = 55; // Spread out
+    // 4. COIN CLUSTERS (2 - 3 coins per cluster spaced 850 - 1300px)
+    if (startX - this.lastCoinX > 850 + Math.random() * 400) {
+      const count = 2 + Math.floor(Math.random() * 2);
+      const clusterBaseX = startX + 180;
+      const coinValues = [25, 50, 100];
+      const coinVal = coinValues[Math.floor(Math.random() * coinValues.length)];
 
-      let isSafe = true;
-      for (let i = 0; i < numCoins; i++) {
-        if (!this.isFarFromCollectibles(arcStartX + i * coinSpacing, 130)) {
-          isSafe = false;
-          break;
-        }
-      }
-
-      if (isSafe) {
-        const isAirArc = Math.random() < 0.40;
-        // Deterministic coin tier
-        const tierRoll = Math.random();
-        const baseVal = tierRoll < 0.50 ? 25 : (tierRoll < 0.85 ? 50 : 100);
-
-        for (let i = 0; i < numCoins; i++) {
-          const cx = arcStartX + i * coinSpacing;
-          const groundY = this.getHeight(cx);
-          const arcLift = isAirArc ? Math.sin((i / (numCoins - 1 || 1)) * Math.PI) * 40 : 0;
-          const cy = groundY - 34 - arcLift;
-          const coinVal = (i === numCoins - 1 && Math.random() < 0.25) ? baseVal * 2 : baseVal;
-
+      for (let i = 0; i < count; i++) {
+        const cx = clusterBaseX + i * 55;
+        const cy = this.getHeight(cx) - 32;
+        if (this.isFarFromCollectibles(cx, 45)) {
           this.collectibles.push({
             type: 'coin',
             x: cx,
             y: cy,
+            radius: 15,
             value: coinVal,
-            radius: coinVal >= 100 ? 16 : 14,
             collected: false,
-            animOffset: Math.random() * Math.PI * 2
+            animOffset: i * 0.45
           });
         }
-        this.lastCoinX = arcStartX + numCoins * coinSpacing;
       }
+      this.lastCoinX = clusterBaseX;
     }
   }
 
+  get currentWeather() {
+    return WEATHER_TYPES[this.weatherIndex];
+  }
+
   update(dt, chassis) {
+    // 1. Weather Cycle Timer (Requirement 9: changes every 60s)
+    this.weatherTimer += dt;
+    if (this.weatherTimer >= this.weatherDuration) {
+      this.weatherTimer = 0;
+      this.weatherIndex = (this.weatherIndex + 1) % WEATHER_TYPES.length;
+      const newWeather = this.currentWeather;
+
+      // Notify player via banner
+      const weatherTitles = {
+        sunny: '☀️ SUNNY & CLEAR',
+        rain: '🌧️ THUNDERSTORM',
+        sunset: '🌅 GOLDEN SUNSET',
+        snow: '❄️ BLIZZARD & SNOW',
+        night: '🌙 STARRY NIGHT'
+      };
+      if (window.gameInstance && window.gameInstance.showWeatherBanner) {
+        window.gameInstance.showWeatherBanner(weatherTitles[newWeather] || newWeather.toUpperCase());
+      }
+      if (newWeather === 'rain' && window.soundSystem) {
+        window.soundSystem.playThunder();
+      }
+    }
+
+    // 2. Lightning Flashes during Rain
+    if (this.currentWeather === 'rain') {
+      this.nextLightningTimer -= dt;
+      if (this.nextLightningTimer <= 0) {
+        this.lightningFlash = 1.0;
+        this.nextLightningTimer = 7 + Math.random() * 11;
+        if (window.soundSystem) window.soundSystem.playThunder();
+      }
+    }
+    if (this.lightningFlash > 0) {
+      this.lightningFlash = Math.max(0, this.lightningFlash - dt * 2.8);
+    }
+
+    // 3. Update Weather Particle Positions
+    if (this.currentWeather === 'rain') {
+      for (const drop of this.rainDrops) {
+        drop.y += drop.speed * dt;
+        drop.x -= 240 * dt; // Angled storm wind
+        if (drop.y > 900) { drop.y = -20; drop.x = Math.random() * 1600; }
+        if (drop.x < 0) { drop.x = 1600; }
+      }
+    } else if (this.currentWeather === 'snow') {
+      const time = Date.now() * 0.002;
+      for (const flake of this.snowFlakes) {
+        flake.y += flake.speedY * dt;
+        flake.x += (flake.speedX + Math.sin(time + flake.swayPhase) * 20) * dt;
+        if (flake.y > 900) { flake.y = -10; flake.x = Math.random() * 1600; }
+        if (flake.x < 0) { flake.x = 1600; }
+      }
+    }
+
+    // 4. Bridges physics update
     const mockVehicle = chassis ? {
       rearWheel: { x: chassis.x - 38, y: chassis.y + 26 },
       frontWheel: { x: chassis.x + 38, y: chassis.y + 26 }
@@ -205,243 +403,401 @@ class Terrain {
 
     this.bridges.forEach(b => b.update(dt, mockVehicle));
 
+    // 5. Procedural generation ahead & cleanup behind
     if (chassis) {
+      this.ensureGenerated(chassis.x + 2600);
       const cutoff = chassis.x - 2200;
       this.collectibles = this.collectibles.filter(c => c.x > cutoff && !c.collected);
       this.bridges = this.bridges.filter(b => b.endX > cutoff);
     }
   }
 
-  // Draw full terrain with fixed static landmarks
-  draw(ctx, camera, viewportWidth, viewportHeight) {
+  // Draw full terrain with parallax background, dynamic weather, functional bridges, landmarks & collectibles
+  draw(ctx, camera, viewportWidth, viewportHeight, activeVehicle = null) {
     const leftX = camera.x - 200;
     const rightX = camera.x + viewportWidth + 200;
     const step = 8;
+    const map = this.mapConfig;
 
-    // 1. Draw Ground Body (Dirt + Bedrock strata)
+    // 1. Draw Multi-Layer Parallax Mountains & Sky
+    this.drawParallaxEnvironment(ctx, camera, viewportWidth, viewportHeight);
+
+    // 2. Draw Ground Body (Dirt + Strata Bands + Deep Chasms under bridges!)
     ctx.save();
     ctx.beginPath();
+    ctx.moveTo(leftX, viewportHeight + 500);
 
-    const startX = Math.floor(leftX / step) * step;
-    ctx.moveTo(startX, this.getHeight(startX));
-
-    for (let x = startX; x <= rightX; x += step) {
-      ctx.lineTo(x, this.getHeight(x));
+    for (let x = leftX; x <= rightX; x += step) {
+      ctx.lineTo(x, this.getGroundSurface(x));
     }
-
-    const groundBottom = camera.y + viewportHeight + 450;
-    ctx.lineTo(rightX, groundBottom);
-    ctx.lineTo(startX, groundBottom);
+    ctx.lineTo(rightX, viewportHeight + 500);
     ctx.closePath();
 
-    // Fixed world earth gradient
-    const groundGrad = ctx.createLinearGradient(0, 350, 0, 1100);
-    groundGrad.addColorStop(0, '#593922');
-    groundGrad.addColorStop(0.25, '#3d2514');
-    groundGrad.addColorStop(0.75, '#25170d');
-    groundGrad.addColorStop(1.0, '#150d07');
-    ctx.fillStyle = groundGrad;
+    const dirtGrad = ctx.createLinearGradient(0, 300, 0, viewportHeight + 400);
+    dirtGrad.addColorStop(0, map.dirtTopColor);
+    dirtGrad.addColorStop(1, map.dirtBottomColor);
+    ctx.fillStyle = dirtGrad;
     ctx.fill();
 
-    // 2. Embedded Rock Strata (Fixed at world coordinates)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
-    const firstPebbleX = Math.floor(leftX / 90) * 90;
-    for (let x = firstPebbleX; x <= rightX; x += 90) {
-      const gy = this.getHeight(x);
-      ctx.beginPath();
-      ctx.ellipse(x + 25, gy + 45, 14, 6, 0.15, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.ellipse(x + 70, gy + 95, 20, 8, -0.15, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 3. Lush Green Grass Surface Ribbon
+    // 3. Draw Subsurface Strata Bands for Geological Realism
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
     ctx.lineWidth = 14;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#27ae60';
     ctx.beginPath();
-    ctx.moveTo(startX, this.getHeight(startX));
-    for (let x = startX; x <= rightX; x += step) {
-      ctx.lineTo(x, this.getHeight(x));
+    for (let x = leftX; x <= rightX; x += step * 2) {
+      const gy = this.getGroundSurface(x) + 40;
+      if (x === leftX) ctx.moveTo(x, gy);
+      else ctx.lineTo(x, gy);
     }
     ctx.stroke();
 
-    // Vibrant grass rim highlight
-    ctx.lineWidth = 4.5;
-    ctx.strokeStyle = '#2ecc71';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    for (let x = leftX; x <= rightX; x += step * 2) {
+      const gy = this.getGroundSurface(x) + 95;
+      if (x === leftX) ctx.moveTo(x, gy);
+      else ctx.lineTo(x, gy);
+    }
     ctx.stroke();
 
-    // 3.5 Decorative Grass Tufts along the surface
-    ctx.strokeStyle = '#2ecc71';
-    ctx.lineWidth = 2;
-    const firstTuftX = Math.floor(leftX / 35) * 35;
-    for (let x = firstTuftX; x <= rightX; x += 35) {
-      const gy = this.getHeight(x);
-      ctx.beginPath();
-      ctx.moveTo(x, gy - 2);
-      ctx.lineTo(x - 3, gy - 9);
-      ctx.moveTo(x + 3, gy - 2);
-      ctx.lineTo(x + 5, gy - 11);
-      ctx.stroke();
+    // 4. Draw Lush Grass / Surface Top Layer
+    ctx.beginPath();
+    for (let x = leftX; x <= rightX; x += step) {
+      const gy = this.getGroundSurface(x);
+      if (x === leftX) ctx.moveTo(x, gy);
+      else ctx.lineTo(x, gy);
     }
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = map.surfaceGrassColor;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    ctx.beginPath();
+    for (let x = leftX; x <= rightX; x += step) {
+      const gy = this.getGroundSurface(x);
+      if (x === leftX) ctx.moveTo(x, gy);
+      else ctx.lineTo(x, gy);
+    }
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = map.surfaceGrassEdge;
+    ctx.stroke();
 
     ctx.restore();
 
-    // 4. Draw Start Line Gate & Banner at 0m
+    // 5. Draw Start Line Gate at 0m
     if (leftX <= 90 && rightX >= -90) {
       this.drawStartLine(ctx);
     }
 
-    // 5. Draw Static World Landmarks (Distance signs, Trees, Fences)
-    // THESE DEFINITIVELY PROVE THE CAR IS DRIVING FORWARD!
+    // 6. Draw Landmarks (Trees, Cacti, Streetlights, Craters)
     this.drawWorldLandmarks(ctx, leftX, rightX);
 
-    // 6. Draw Dynamic Bridges
+    // 7. Draw Functional Bridges suspended over the chasms! (Requirement 8)
     this.bridges.forEach(b => {
       if (b.endX >= leftX && b.startX <= rightX) {
         b.draw(ctx);
       }
     });
 
-    // 7. Draw Collectibles (Coins, Diamonds, Fuel Jerrycans)
+    // 8. Draw Collectibles (Coins with numerical values, Diamonds, Fuel Jerrycans)
     this.drawCollectibles(ctx, leftX, rightX);
+
+    // 9. Draw Dynamic Weather Effects (Rain, Snow, Lightning) (Requirement 9)
+    this.drawWeatherEffects(ctx, viewportWidth, viewportHeight);
+
+    // 10. Draw Vehicle Headlight Beam illumination during dark weathers
+    if (activeVehicle && (this.currentWeather === 'night' || this.currentWeather === 'sunset' || this.currentWeather === 'rain')) {
+      this.drawHeadlightCone(ctx, activeVehicle);
+    }
   }
 
-  // Draw Distance Signposts (Every 50 meters = 500px in world) & Trees/Fences
-  drawWorldLandmarks(ctx, leftX, rightX) {
+  // Multi-layer Parallax Skies & Mountains
+  drawParallaxEnvironment(ctx, camera, viewW, viewH) {
+    const map = this.mapConfig;
+    const weather = this.currentWeather;
+
+    // Sky colors blended by weather
+    let skyTop = map.skyTop;
+    let skyBottom = map.skyBottom;
+
+    if (weather === 'rain') {
+      skyTop = '#192a3e'; skyBottom = '#334e68';
+    } else if (weather === 'sunset') {
+      skyTop = '#e15f41'; skyBottom = '#f7d794';
+    } else if (weather === 'snow') {
+      skyTop = '#57606f'; skyBottom = '#d2dae2';
+    } else if (weather === 'night') {
+      skyTop = '#0a0d1a'; skyBottom = '#1e2438';
+    }
+
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, camera.y, 0, camera.y + viewH);
+    sky.addColorStop(0, skyTop);
+    sky.addColorStop(1, skyBottom);
+    ctx.fillStyle = sky;
+    ctx.fillRect(camera.x, camera.y, viewW, viewH);
+
+    // Lightning Flash illumination
+    if (this.lightningFlash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.lightningFlash * 0.75})`;
+      ctx.fillRect(camera.x, camera.y, viewW, viewH);
+    }
+
+    // Night Stars & Moon / Earth in Moon Map
+    if (weather === 'night' || this.mapId === 'moon') {
+      this.drawCosmicStars(ctx, camera, viewW, viewH);
+    }
+
+    // Distant Parallax Mountain Silhouettes (Layer 1: 0.15x scroll)
     ctx.save();
-
-    // --- Distance Marker Signs (Every 50m = 500px) ---
-    const firstSign = Math.max(1, Math.floor(leftX / 500));
-    const lastSign = Math.floor(rightX / 500);
-
-    for (let i = firstSign; i <= lastSign; i++) {
-      const signX = i * 500;
-      const meters = i * 50;
-      const groundY = this.getHeight(signX);
-
-      // Wooden post
-      ctx.fillStyle = '#7f5539';
-      ctx.fillRect(signX - 3, groundY - 42, 6, 42);
-
-      // Signboard
-      ctx.fillStyle = '#f1c40f'; // Golden yellow sign
-      ctx.beginPath();
-      ctx.roundRect(signX - 22, groundY - 60, 44, 20, 4);
-      ctx.fill();
-      ctx.lineWidth = 1.8;
-      ctx.strokeStyle = '#d68910';
-      ctx.stroke();
-
-      // Sign text: "50m", "100m", etc.
-      ctx.fillStyle = '#2c3e50';
-      ctx.font = '900 11px Nunito, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${meters}m`, signX, groundY - 49);
+    const p1x = camera.x * 0.15;
+    ctx.fillStyle = map.mountainColor;
+    ctx.beginPath();
+    ctx.moveTo(camera.x, camera.y + viewH);
+    for (let x = camera.x; x <= camera.x + viewW; x += 30) {
+      const my = camera.y + viewH * 0.55 + Math.sin((x + p1x) * 0.0018) * 85 + Math.cos((x + p1x) * 0.004) * 45;
+      ctx.lineTo(x, my);
     }
+    ctx.lineTo(camera.x + viewW, camera.y + viewH);
+    ctx.closePath();
+    ctx.globalAlpha = 0.65;
+    ctx.fill();
+    ctx.restore();
 
-    // --- Procedural Trees & Bushes along the countryside ---
-    // Deterministic placement every ~320px
-    const firstTreeIndex = Math.floor(leftX / 320);
-    const lastTreeIndex = Math.floor(rightX / 320);
-
-    for (let i = firstTreeIndex; i <= lastTreeIndex; i++) {
-      const treeX = i * 320 + 75;
-      if (treeX < 120) continue; // Keep start line clear
-
-      const groundY = this.getHeight(treeX);
-      const isPine = (i % 2 === 0);
-
-      if (isPine) {
-        // Pine Tree
-        // Trunk
-        ctx.fillStyle = '#5d4037';
-        ctx.fillRect(treeX - 4, groundY - 48, 8, 48);
-
-        // 3 Pine Foliage Layers
-        ctx.fillStyle = '#1e824c';
-        ctx.beginPath();
-        ctx.moveTo(treeX, groundY - 80);
-        ctx.lineTo(treeX + 18, groundY - 50);
-        ctx.lineTo(treeX - 18, groundY - 50);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = '#26a65b';
-        ctx.beginPath();
-        ctx.moveTo(treeX, groundY - 65);
-        ctx.lineTo(treeX + 22, groundY - 35);
-        ctx.lineTo(treeX - 22, groundY - 35);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = '#27ae60';
-        ctx.beginPath();
-        ctx.moveTo(treeX, groundY - 50);
-        ctx.lineTo(treeX + 26, groundY - 20);
-        ctx.lineTo(treeX - 26, groundY - 20);
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        // Leafy Deciduous Tree / Bush
-        ctx.fillStyle = '#6d4c41';
-        ctx.fillRect(treeX - 3, groundY - 36, 6, 36);
-
-        // Green foliage puff
-        ctx.fillStyle = '#2ecc71';
-        ctx.beginPath();
-        ctx.arc(treeX, groundY - 44, 20, 0, Math.PI * 2);
-        ctx.arc(treeX - 10, groundY - 36, 14, 0, Math.PI * 2);
-        ctx.arc(treeX + 10, groundY - 36, 14, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // Secondary Parallax Hills (Layer 2: 0.38x scroll)
+    ctx.save();
+    const p2x = camera.x * 0.38;
+    ctx.fillStyle = map.hillsColor;
+    ctx.beginPath();
+    ctx.moveTo(camera.x, camera.y + viewH);
+    for (let x = camera.x; x <= camera.x + viewW; x += 20) {
+      const hy = camera.y + viewH * 0.68 + Math.sin((x + p2x) * 0.0035) * 60 + Math.cos((x + p2x) * 0.008) * 25;
+      ctx.lineTo(x, hy);
     }
-
+    ctx.lineTo(camera.x + viewW, camera.y + viewH);
+    ctx.closePath();
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
     ctx.restore();
   }
 
-  drawStartLine(ctx) {
+  // Twinkling Stars & Glowing Moon
+  drawCosmicStars(ctx, camera, viewW, viewH) {
     ctx.save();
-    const groundY = this.getHeight(0);
+    ctx.fillStyle = '#ffffff';
+    const seed = 42;
+    for (let i = 0; i < 60; i++) {
+      const sx = camera.x + ((i * 137.5) % viewW);
+      const sy = camera.y + ((i * 89.3) % (viewH * 0.6));
+      const r = (i % 3 === 0) ? 2.0 : 1.2;
+      const alpha = 0.4 + Math.sin(Date.now() * 0.003 + i) * 0.4;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    // Checkered finish line on ground
-    const checkSize = 7;
-    for (let row = 0; row < 2; row++) {
-      for (let col = -5; col <= 5; col++) {
-        ctx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#1e272e';
-        ctx.fillRect(col * checkSize, groundY - 2 + row * checkSize, checkSize, checkSize);
+    // Glowing Moon
+    ctx.globalAlpha = 0.95;
+    const moonX = camera.x + viewW * 0.82;
+    const moonY = camera.y + 110;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 32, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5f6fa';
+    ctx.shadowColor = '#dcdde1';
+    ctx.shadowBlur = 24;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw Dynamic Rain Streaks & Snowflakes (Requirement 9)
+  drawWeatherEffects(ctx, viewW, viewH) {
+    if (this.currentWeather === 'rain') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(200, 225, 255, 0.65)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (const d of this.rainDrops) {
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 7, d.y + d.len);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (this.currentWeather === 'snow') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      for (const f of this.snowFlakes) {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Vehicle Headlights Beam Projection Cone
+  drawHeadlightCone(ctx, vehicle) {
+    ctx.save();
+    const ch = vehicle.chassis;
+    const vDef = VEHICLE_DEFS[vehicle.vehicleId || 'jeep'] || VEHICLE_DEFS.jeep;
+    const offset = vDef.headlightOffset || { x: 44, y: 0 };
+
+    const cosA = Math.cos(ch.angle);
+    const sinA = Math.sin(ch.angle);
+    const lampX = ch.x + offset.x * cosA - offset.y * sinA;
+    const lampY = ch.y + offset.x * sinA + offset.y * cosA;
+
+    // Projected Light Cone
+    const coneLen = 320;
+    const coneSpread = 65;
+    const targetX = lampX + cosA * coneLen;
+    const targetY = lampY + sinA * coneLen;
+
+    const perpX = -sinA * coneSpread;
+    const perpY = cosA * coneSpread;
+
+    const coneGrad = ctx.createRadialGradient(lampX, lampY, 10, targetX, targetY, coneLen);
+    coneGrad.addColorStop(0, 'rgba(255, 245, 180, 0.55)');
+    coneGrad.addColorStop(0.5, 'rgba(255, 230, 140, 0.25)');
+    coneGrad.addColorStop(1, 'rgba(255, 220, 100, 0.0)');
+
+    ctx.fillStyle = coneGrad;
+    ctx.beginPath();
+    ctx.moveTo(lampX, lampY);
+    ctx.lineTo(targetX + perpX, targetY + perpY);
+    ctx.lineTo(targetX - perpX, targetY - perpY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw Start Line Banner
+  drawStartLine(ctx) {
+    const groundY = this.getBaseHeight(0);
+    const postHeight = 115;
+    const bannerWidth = 120;
+
+    ctx.save();
+    ctx.translate(0, 0);
+
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(-bannerWidth * 0.5 - 6, groundY - postHeight, 10, postHeight);
+    ctx.fillRect(bannerWidth * 0.5 - 4, groundY - postHeight, 10, postHeight);
+
+    ctx.fillStyle = '#dcdde1';
+    ctx.fillRect(-bannerWidth * 0.5, groundY - postHeight, bannerWidth, 28);
+
+    const cols = 10;
+    const cellW = bannerWidth / cols;
+    ctx.fillStyle = '#2f3542';
+    for (let c = 0; c < cols; c++) {
+      if (c % 2 === 0) {
+        ctx.fillRect(-bannerWidth * 0.5 + c * cellW, groundY - postHeight, cellW, 14);
+        ctx.fillRect(-bannerWidth * 0.5 + (c + 1) * cellW, groundY - postHeight + 14, cellW, 14);
       }
     }
 
-    // Steel Banner Posts
-    const postHeight = 92;
-    ctx.fillStyle = '#7f8c8d';
-    ctx.fillRect(-42, groundY - postHeight, 6, postHeight);
-    ctx.fillRect(42, groundY - postHeight, 6, postHeight);
-
-    // Overhead START Banner
-    ctx.fillStyle = '#27ae60';
-    ctx.beginPath();
-    ctx.roundRect(-50, groundY - postHeight - 26, 100, 26, 6);
-    ctx.fill();
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke();
-
-    // Text: START
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 14px Nunito, sans-serif';
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = '900 13px Titan One, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🏁 START', 0, groundY - postHeight - 13);
-
+    ctx.fillText('🏁 START', 0, groundY - postHeight - 12);
     ctx.restore();
   }
 
+  // Draw Static World Landmarks
+  drawWorldLandmarks(ctx, leftX, rightX) {
+    const spacing = 500;
+    const firstIndex = Math.floor(leftX / spacing);
+    const lastIndex = Math.ceil(rightX / spacing);
+
+    for (let i = firstIndex; i <= lastIndex; i++) {
+      const signX = i * spacing;
+      if (signX < 200) continue;
+      const meters = Math.round(signX / 10);
+      const groundY = this.getBaseHeight(signX);
+
+      // Distance Signpost
+      ctx.save();
+      ctx.translate(signX, groundY);
+
+      ctx.fillStyle = '#57606f';
+      ctx.fillRect(-2, -54, 5, 54);
+
+      ctx.fillStyle = '#2ed573';
+      ctx.fillRect(-26, -56, 52, 22);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-26, -56, 52, 22);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 12px Nunito, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${meters}m`, 0, -45);
+      ctx.restore();
+
+      // Theme-Specific Landmarks (Trees, Cacti, Pine trees, Streetlights)
+      const objX = signX + 220;
+      if (objX < rightX) {
+        const objY = this.getBaseHeight(objX);
+        const lm = this.mapConfig.landmark;
+        ctx.save();
+        ctx.translate(objX, objY);
+
+        if (lm === 'cactus') {
+          // Desert Saguaro Cactus
+          ctx.fillStyle = '#2e7d32';
+          ctx.fillRect(-5, -60, 10, 60);
+          ctx.fillRect(-22, -45, 17, 6);
+          ctx.fillRect(-22, -58, 6, 17);
+          ctx.fillRect(5, -35, 18, 6);
+          ctx.fillRect(17, -48, 6, 17);
+        } else if (lm === 'pine') {
+          // Snowy Pine Tree
+          ctx.fillStyle = '#5d4037';
+          ctx.fillRect(-4, -18, 8, 18);
+          ctx.fillStyle = '#2c3e50';
+          for (let l = 0; l < 3; l++) {
+            ctx.beginPath();
+            ctx.moveTo(0, -65 + l * 16);
+            ctx.lineTo(-24 + l * 4, -40 + l * 16);
+            ctx.lineTo(24 - l * 4, -40 + l * 16);
+            ctx.closePath();
+            ctx.fill();
+            // Snow dusting
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-18 + l * 3, -40 + l * 16, 36 - l * 6, 3);
+            ctx.fillStyle = '#2c3e50';
+          }
+        } else if (lm === 'lightpost') {
+          // Highway Streetlight
+          ctx.strokeStyle = '#747d8c';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(0, 0); ctx.lineTo(0, -75); ctx.lineTo(16, -85);
+          ctx.stroke();
+          ctx.fillStyle = '#f1c40f';
+          ctx.beginPath(); ctx.arc(16, -85, 5, 0, Math.PI * 2); ctx.fill();
+        } else if (lm === 'crater') {
+          // Lunar Rocks & Crater
+          ctx.fillStyle = '#57606f';
+          ctx.beginPath(); ctx.ellipse(0, 0, 24, 6, 0, 0, Math.PI * 2); ctx.fill();
+        } else {
+          // Countryside Oak Tree
+          ctx.fillStyle = '#795548';
+          ctx.fillRect(-5, -45, 10, 45);
+          ctx.fillStyle = '#27ae60';
+          ctx.beginPath();
+          ctx.arc(0, -58, 26, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // Draw Collectibles with values stamped on coins
   drawCollectibles(ctx, leftX, rightX) {
     const time = Date.now() * 0.005;
 
@@ -455,7 +811,7 @@ class Terrain {
         const scaleX = Math.cos(time + item.animOffset);
         ctx.scale(Math.abs(scaleX) * 0.85 + 0.15, 1.0);
 
-        // Coin Outer Rim
+        // Coin Outer Gold Rim
         ctx.beginPath();
         ctx.arc(0, 0, item.radius, 0, Math.PI * 2);
         ctx.fillStyle = item.value === 100 ? '#f39c12' : '#f1c40f';
@@ -470,7 +826,7 @@ class Terrain {
         ctx.fillStyle = item.value >= 100 ? '#f5b041' : '#f9e79f';
         ctx.fill();
 
-        // Stamped Numerical Coin Value (Requirement 2)
+        // Stamped Numerical Coin Value
         const valStr = String(item.value || 50);
         ctx.fillStyle = item.value >= 100 ? '#7e5109' : '#936a08';
         ctx.font = valStr.length >= 3 ? '900 8.5px Nunito, sans-serif' : '900 10.5px Nunito, sans-serif';
@@ -479,22 +835,18 @@ class Terrain {
         ctx.fillText(valStr, 0, 1);
 
       } else if (item.type === 'diamond') {
-        // Floating Diamond Animation
         const bob = Math.sin(time * 0.9 + item.animOffset) * 6;
         ctx.translate(0, bob);
-
-        // Radiant diamond pulse
         const scaleX = Math.cos(time * 1.6 + item.animOffset);
         ctx.scale(Math.abs(scaleX) * 0.75 + 0.25, 1.0);
 
-        // Diamond cut polygon
         ctx.beginPath();
-        ctx.moveTo(0, -16);   // top center
-        ctx.lineTo(16, -6);   // top right
-        ctx.lineTo(12, 5);    // mid right
-        ctx.lineTo(0, 17);    // bottom tip
-        ctx.lineTo(-12, 5);   // mid left
-        ctx.lineTo(-16, -6);  // top left
+        ctx.moveTo(0, -16);
+        ctx.lineTo(16, -6);
+        ctx.lineTo(12, 5);
+        ctx.lineTo(0, 17);
+        ctx.lineTo(-12, 5);
+        ctx.lineTo(-16, -6);
         ctx.closePath();
 
         const diaGrad = ctx.createLinearGradient(-14, -16, 14, 17);
@@ -508,58 +860,25 @@ class Terrain {
         ctx.strokeStyle = '#ffffff';
         ctx.stroke();
 
-        // Facets
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-        ctx.lineWidth = 1.3;
-        ctx.beginPath();
-        ctx.moveTo(-16, -6); ctx.lineTo(16, -6);
-        ctx.moveTo(-8, -6);  ctx.lineTo(0, 17);
-        ctx.moveTo(8, -6);   ctx.lineTo(0, 17);
-        ctx.moveTo(0, -16);  ctx.lineTo(0, 17);
-        ctx.stroke();
-
-        // Shimmer star
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(-6, -8, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-
       } else if (item.type === 'fuel') {
-        const bob = Math.sin(time * 0.8) * 4;
+        const bob = Math.sin(time * 0.8 + item.animOffset) * 5;
         ctx.translate(0, bob);
 
-        // Glow ring behind fuel
-        ctx.fillStyle = 'rgba(231, 76, 60, 0.2)';
-        ctx.beginPath();
-        ctx.arc(0, 0, 28, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Canister Body
         ctx.fillStyle = '#e74c3c';
-        ctx.beginPath();
-        ctx.roundRect(-16, -22, 32, 40, 5);
-        ctx.fill();
-        ctx.lineWidth = 2.2;
+        ctx.fillRect(-14, -20, 28, 30);
+        ctx.lineWidth = 2;
         ctx.strokeStyle = '#c0392b';
-        ctx.stroke();
+        ctx.strokeRect(-14, -20, 28, 30);
 
-        // Handle & Cap
-        ctx.fillStyle = '#c0392b';
-        ctx.fillRect(-10, -29, 20, 7);
-        ctx.fillStyle = '#bdc3c7';
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(-10, -28, 20, 8);
         ctx.fillRect(7, -33, 7, 7);
 
-        // Label GAS
         ctx.fillStyle = '#ffffff';
         ctx.font = '900 10px Nunito, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('GAS', 0, -3);
-
-        ctx.fillStyle = '#f1c40f';
-        ctx.beginPath();
-        ctx.arc(0, 8, 4, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillText('GAS', 0, -4);
       }
 
       ctx.restore();
@@ -567,7 +886,7 @@ class Terrain {
   }
 }
 
-// Dynamic Wooden Suspension Bridge
+// Functional Suspension Bridge over Deep Chasms (Requirement 8)
 class SuspensionBridge {
   constructor(startX, endX, terrainRef) {
     this.startX = startX;
@@ -584,12 +903,7 @@ class SuspensionBridge {
       const t = i / this.numPlanks;
       const x = this.startX + t * this.length;
       const baseY = this.yStart + t * (this.yEnd - this.yStart);
-      this.nodes.push({
-        x: x,
-        baseY: baseY,
-        y: baseY,
-        vy: 0
-      });
+      this.nodes.push({ x: x, baseY: baseY, y: baseY, vy: 0 });
     }
   }
 
@@ -607,7 +921,7 @@ class SuspensionBridge {
   }
 
   update(dt, vehicle) {
-    const kSpring = 120;
+    const kSpring = 130;
     const damping = 0.90;
 
     for (let i = 1; i < this.nodes.length - 1; i++) {
@@ -619,11 +933,12 @@ class SuspensionBridge {
       const forceY = (avgNeighborY - node.y) * kSpring * 0.5 + (node.baseY - node.y) * 45;
       node.vy += forceY * dt;
 
+      // React to vehicle wheels crossing the bridge deck!
       if (vehicle) {
         [vehicle.rearWheel, vehicle.frontWheel].forEach(w => {
           const dist = Math.abs(w.x - node.x);
-          if (dist < 35 && Math.abs(w.y - node.y) < 40) {
-            node.vy += 380 * (1 - dist / 35) * dt;
+          if (dist < 40 && Math.abs(w.y - node.y) < 45) {
+            node.vy += 420 * (1 - dist / 40) * dt;
           }
         });
       }
@@ -636,27 +951,36 @@ class SuspensionBridge {
   draw(ctx) {
     ctx.save();
 
-    // Suspension cables
-    ctx.strokeStyle = '#7f8c8d';
-    ctx.lineWidth = 3;
+    // 1. Solid Stone Cliff Pillars at both bridge anchor ends descending into the canyon
+    ctx.fillStyle = '#3d3d3d';
+    ctx.fillRect(this.startX - 18, this.yStart - 10, 22, 180);
+    ctx.fillRect(this.endX - 4, this.yEnd - 10, 22, 180);
+
+    ctx.fillStyle = '#57606f';
+    ctx.fillRect(this.startX - 22, this.yStart - 40, 28, 32);
+    ctx.fillRect(this.endX - 6, this.yEnd - 40, 28, 32);
+
+    // 2. High Suspension Cables hanging in air across chasm
+    ctx.strokeStyle = '#747d8c';
+    ctx.lineWidth = 3.5;
     ctx.beginPath();
-    ctx.moveTo(this.startX, this.nodes[0].y - 25);
+    ctx.moveTo(this.startX, this.nodes[0].y - 36);
     for (let i = 1; i < this.nodes.length; i++) {
-      ctx.lineTo(this.nodes[i].x, this.nodes[i].y - 25);
+      ctx.lineTo(this.nodes[i].x, this.nodes[i].y - 36);
     }
     ctx.stroke();
 
-    // Vertical ropes
-    ctx.strokeStyle = 'rgba(127, 140, 141, 0.6)';
-    ctx.lineWidth = 1.5;
+    // 3. Vertical Suspension Ropes
+    ctx.strokeStyle = 'rgba(116, 125, 140, 0.75)';
+    ctx.lineWidth = 1.6;
     for (let i = 0; i < this.nodes.length; i += 2) {
       ctx.beginPath();
-      ctx.moveTo(this.nodes[i].x, this.nodes[i].y - 25);
+      ctx.moveTo(this.nodes[i].x, this.nodes[i].y - 36);
       ctx.lineTo(this.nodes[i].x, this.nodes[i].y);
       ctx.stroke();
     }
 
-    // Wooden Planks
+    // 4. Wooden Bridge Deck Planks that flex and react to vehicle weight
     for (let i = 0; i < this.numPlanks; i++) {
       const n1 = this.nodes[i];
       const n2 = this.nodes[i + 1];
@@ -668,11 +992,18 @@ class SuspensionBridge {
       ctx.translate(n1.x, n1.y);
       ctx.rotate(angle);
 
+      // Plank body
       ctx.fillStyle = '#8b5a2b';
       ctx.fillRect(0, -4, Math.hypot(dx, dy) - 2, 8);
 
+      // Plank wood highlight
       ctx.fillStyle = '#a06535';
-      ctx.fillRect(0, -4, Math.hypot(dx, dy) - 2, 2);
+      ctx.fillRect(0, -4, Math.hypot(dx, dy) - 2, 2.5);
+
+      // Planks steel rivets
+      ctx.fillStyle = '#2d3436';
+      ctx.fillRect(2, -2, 2, 2);
+      ctx.fillRect(Math.hypot(dx, dy) - 6, -2, 2, 2);
 
       ctx.restore();
     }

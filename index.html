@@ -40,6 +40,7 @@
         <div class="hud-card stage-card">
           <span class="hud-label">STAGE</span>
           <span class="hud-value" id="stageName">Countryside</span>
+          <span class="hud-sub" id="hudWeather">☀️ Sunny</span>
         </div>
 
         <div class="hud-buttons">
@@ -83,6 +84,15 @@
       <div id="stuntBanner" class="stunt-banner hidden">
         <div id="stuntTitle" class="stunt-title">BACKFLIP!</div>
         <div id="stuntReward" class="stunt-reward">+1000 COINS</div>
+      </div>
+
+      <!-- Weather Change Notification Banner (Requirement 9) -->
+      <div id="weatherBanner" class="weather-banner hidden">
+        <span class="weather-icon" id="weatherBannerIcon">☀️</span>
+        <div class="weather-text-col">
+          <span class="weather-sub">1-MINUTE WEATHER FORECAST</span>
+          <span class="weather-title" id="weatherBannerText">Sunny Skies</span>
+        </div>
       </div>
     </div>
 
@@ -135,9 +145,30 @@
           <div class="wallet-badge diamond-badge">💎 <span id="homeDiamonds">0</span></div>
         </div>
 
-        <div class="home-showcase">
-          <canvas id="homePreviewCanvas" width="320" height="150"></canvas>
-          <div class="home-v-label">CURRENT VEHICLE: <strong id="homeVehicleName">Hill Climber</strong></div>
+        <div class="home-selection-grid">
+          <!-- Current Vehicle Showcase -->
+          <div class="home-showcase">
+            <canvas id="homePreviewCanvas" width="300" height="135"></canvas>
+            <div class="home-v-label">VEHICLE: <strong id="homeVehicleName">Hill Climber</strong></div>
+          </div>
+
+          <!-- Stage / Map Selection Card (Requirements 2 & 7) -->
+          <div class="home-stage-box">
+            <div class="stage-badge-row">
+              <span class="stage-tag" id="homeStageTag">FREE</span>
+              <span class="stage-weather" id="homeStageWeather">🌦️ 1-Min Weather</span>
+            </div>
+            <h3 class="stage-title" id="homeStageName">Countryside</h3>
+            <p class="stage-desc" id="homeStageDesc">Lush green rolling hills with peaceful oak trees and wooden fences.</p>
+            <div class="stage-specs" id="homeStageSpecs">
+              <span>Gravity: 1.0x</span> • <span>Grip: 100%</span>
+            </div>
+            <div class="stage-nav-row">
+              <button id="prevStageBtn" class="map-nav-btn" aria-label="Previous Stage">◀</button>
+              <button id="stageActionBtn" class="btn primary-btn small-btn">Equipped ✓</button>
+              <button id="nextStageBtn" class="map-nav-btn" aria-label="Next Stage">▶</button>
+            </div>
+          </div>
         </div>
 
         <div class="menu-actions home-actions">

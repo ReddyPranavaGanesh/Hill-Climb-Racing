@@ -369,6 +369,40 @@ class SoundSystem {
     } catch (e) {}
   }
 
+  // Thunder Clap for Thunderstorm Weather
+  playThunder() {
+    if (this.muted || !this.ctx) return;
+    this.ensureContext();
+    try {
+      const now = this.ctx.currentTime;
+      const bufferSize = Math.floor(this.ctx.sampleRate * 1.1);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.42));
+      }
+
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(190, now);
+      filter.frequency.exponentialRampToValueAtTime(45, now + 1.0);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.45, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.08);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      noise.start(now);
+      noise.stop(now + 1.1);
+    } catch (e) {}
+  }
+
   // Stunt Fanfare (Backflip / Frontflip)
   playStuntFanfare() {
     if (this.muted || !this.ctx) return;
