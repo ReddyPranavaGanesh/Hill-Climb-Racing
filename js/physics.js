@@ -300,25 +300,50 @@ class VehiclePhysics {
       // Slope gravity assist/resistance
       this.chassis.vx += GRAVITY * Math.sin(slopeAngle) * tangent.x * dt;
 
-      // Angular tracking of ground slope
-      const targetAngle = slopeAngle;
-      const angleErr = this.chassis.angle - targetAngle;
-      const angK = 190 * suspMult;
-      const angC = 26 * Math.sqrt(suspMult);
-      const alignTorque = -angK * angleErr - angC * this.chassis.vAngle;
-
-      this.chassis.vAngle += (totalSuspTorque + alignTorque) * dt;
+      // Angular tracking: Only track slope if BOTH wheels are grounded!
+      if (rGrounded && fGrounded) {
+        const targetAngle = slopeAngle;
+        const angleErr = this.chassis.angle - targetAngle;
+        const angK = 110 * suspMult;
+        const angC = 18 * Math.sqrt(suspMult);
+        const alignTorque = -angK * angleErr - angC * this.chassis.vAngle;
+        this.chassis.vAngle += (totalSuspTorque + alignTorque) * dt;
+      } else if (rGrounded) {
+        // Rear wheel only (WHEELIE): acceleration pitches backwards; brake brings nose down!
+        let wheelieTorque = totalSuspTorque;
+        if (input.gas && this.fuel > 0) {
+          wheelieTorque -= (enginePower * 0.0065 + 1.2);
+        }
+        if (input.brake) {
+          wheelieTorque += (brakeTorque * 0.0055 + 1.2);
+        }
+        this.chassis.vAngle += wheelieTorque * dt;
+        this.chassis.vAngle *= (1 - 0.75 * dt);
+      } else if (fGrounded) {
+        // Front wheel only (STOPPIE / NOSE DIVE): hard brake pitches forward; gas brings rear down!
+        let stoppieTorque = totalSuspTorque;
+        if (input.brake) {
+          stoppieTorque += (brakeTorque * 0.0075 + 1.5);
+        }
+        if (input.gas && this.fuel > 0) {
+          stoppieTorque -= (enginePower * 0.005 + 1.0);
+        }
+        this.chassis.vAngle += stoppieTorque * dt;
+        this.chassis.vAngle *= (1 - 0.75 * dt);
+      }
       this.chassis.angle += this.chassis.vAngle * dt;
 
       // Damp vertical velocity when firmly planted
       this.chassis.vy *= 0.88;
 
-      // Ground floor safety: prevent chassis bottom from penetrating terrain
-      const midGroundY = terrain.getHeight(this.chassis.x);
-      const floorLimit = midGroundY - R - 6;
-      if (this.chassis.y > floorLimit) {
-        this.chassis.y = floorLimit;
-        if (this.chassis.vy > 0) this.chassis.vy = 0;
+      // Ground floor safety: prevent chassis bottom from penetrating terrain (ONLY when upright)
+      if (isUpright) {
+        const midGroundY = terrain.getHeight(this.chassis.x);
+        const floorLimit = midGroundY - R - 6;
+        if (this.chassis.y > floorLimit) {
+          this.chassis.y = floorLimit;
+          if (this.chassis.vy > 0) this.chassis.vy = 0;
+        }
       }
 
       // Landing from air
@@ -330,12 +355,12 @@ class VehiclePhysics {
       }
 
     } else {
-      // Airborne Stunts & Flips (Requirement 3: Fix car flipping too fast & smooth rotation)
+      // Airborne Stunts & Flips: Responsive stunts and flipping
       this.airTime += dt;
       this.chassis.vx *= (1 - 0.08 * dt);
 
-      // Smooth, deliberate stunt flips with responsive control
-      const airFlipRate = airTorque * 0.48 * dt;
+      // Responsive mid-air flip controls: holding gas backflips, holding brake frontflips
+      const airFlipRate = airTorque * 2.4 * dt;
       if (input.gas) {
         this.chassis.vAngle -= airFlipRate;  // Backflip
       }
@@ -344,11 +369,11 @@ class VehiclePhysics {
       }
 
       // Air stabilization drag: higher drag when releasing pedals so flips don't spin uncontrollably
-      const airDrag = (input.gas || input.brake) ? 1.2 : 2.8;
+      const airDrag = (input.gas || input.brake) ? 0.7 : 2.0;
       this.chassis.vAngle *= (1 - airDrag * dt);
 
-      // Clamp max mid-air angular velocity to prevent dizzying, uncontrollable tumble
-      const maxAirSpin = 4.8; // ~0.76 rotations/sec max
+      // Clamp max mid-air angular velocity
+      const maxAirSpin = 5.8; // ~0.92 rotations/sec max
       this.chassis.vAngle = Math.max(-maxAirSpin, Math.min(maxAirSpin, this.chassis.vAngle));
       this.chassis.angle += this.chassis.vAngle * dt;
 
@@ -356,16 +381,18 @@ class VehiclePhysics {
       const dAngle = this.chassis.angle - this.lastAngle;
       this.totalAirRotation += dAngle;
 
-      // Landing check
-      const rGroundY = terrain.getHeight(rAnchor.x);
-      const fGroundY = terrain.getHeight(fAnchor.x);
-      const avgGroundY = (rGroundY + fGroundY) * 0.5;
+      // Landing check: only land on wheels if upright!
+      if (isUpright) {
+        const rGroundY = terrain.getHeight(rAnchor.x);
+        const fGroundY = terrain.getHeight(fAnchor.x);
+        const avgGroundY = (rGroundY + fGroundY) * 0.5;
 
-      if (this.chassis.y >= avgGroundY - sRest && this.chassis.vy > 0) {
-        this.chassis.y = avgGroundY - sRest;
-        this.chassis.vy = -Math.abs(this.chassis.vy) * 0.10;
-        this.isAirborne = false;
-        this.chassis.vAngle *= 0.35;
+        if (this.chassis.y >= avgGroundY - sRest && this.chassis.vy > 0) {
+          this.chassis.y = avgGroundY - sRest;
+          this.chassis.vy = -Math.abs(this.chassis.vy) * 0.10;
+          this.isAirborne = false;
+          this.chassis.vAngle *= 0.35;
+        }
       }
     }
 
@@ -394,28 +421,27 @@ class VehiclePhysics {
     ));
     this.driverHead.bobAngle += (targetBob - this.driverHead.bobAngle) * 0.14;
 
-    // 7. Crash detection: Player dies when driver's head or car roof strikes ground when flipped
-    if (this.timeAlive > 0.25) {
-      const cosA = Math.cos(this.chassis.angle);
-      // Car is flipped on its side or upside down (tilt beyond ~70°)
-      const isFlipped = cosA < 0.35 || Math.abs(Math.sin(this.chassis.angle)) > 0.92;
+    // 7. Crash detection: Player dies whenever Bill's head or car roof strikes the ground!
+    if (this.timeAlive > 0.15) {
+      const headR = this.driverHead.radius || 12;
+      const headGY = terrain.getHeight(headWorld.x);
 
-      if (isFlipped) {
-        const headGY = terrain.getHeight(this.driverHead.x);
-        const headStrikes = (this.driverHead.y + this.driverHead.radius >= headGY - 2);
+      // 1. Bill's head touches the ground
+      const headStrikes = (headWorld.y + headR >= headGY);
 
-        // Also check vehicle roll cage / roof apex
-        const roofApex = this.localToWorld(0, -36);
-        const roofGY = terrain.getHeight(roofApex.x);
-        const roofStrikes = (roofApex.y >= roofGY - 2);
+      // 2. Roll cage / vehicle roof strikes ground when tilted/flipped
+      const roofApex = this.localToWorld(0, -34);
+      const roofGY = terrain.getHeight(roofApex.x);
+      const isTilted = downY < 0.65; // tilted beyond ~50°
+      const roofStrikes = isTilted && (roofApex.y >= roofGY);
 
-        if (headStrikes || roofStrikes) {
-          this.crashed = true;
-          this.crashReason = 'DRIVER DOWN!';
-          // Break Bill's neck pose (snap head back)
-          this.driverHead.bobAngle = (this.chassis.vAngle > 0 ? 0.85 : -0.85);
-          window.soundSystem.playCrash();
-        }
+      if (headStrikes || roofStrikes) {
+        this.crashed = true;
+        this.crashReason = 'DRIVER DOWN!';
+        // Snap Bill's head back in crash reaction
+        this.driverHead.bobAngle = (this.chassis.vAngle > 0 ? 0.95 : -0.95);
+        if (window.soundSystem) window.soundSystem.playCrash();
+        return;
       }
     }
 
